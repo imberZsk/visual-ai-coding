@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 主题语义色变量：light 为默认，.dark 覆盖为暗色 */
+:root {
+  --surface: 247 248 250; /* 应用主背景 */
+  --panel: 255 255 255; /* 卡片/面板背景 */
+  --border: 226 229 234; /* 边框线 */
+  --accent: 79 110 247; /* 强调色（按钮/选中） */
+  --text-main: 24 27 34; /* 主文本 */
+  --text-muted: 110 119 134; /* 次要文本 */
+}
+
+/* 暗色主题：通过 html.dark 类切换 */
+.dark {
+  --surface: 17 19 24;
+  --panel: 27 30 38;
+  --border: 44 49 60;
+  --accent: 110 138 255;
+  --text-main: 233 236 242;
+  --text-muted: 148 156 170;
+}
+
+/* 全局基础样式：填满视口、统一字体与文本色 */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background-color: rgb(var(--surface));
+  color: rgb(var(--text-main));
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 滚动条美化，贴合主题 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--border));
+  border-radius: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
