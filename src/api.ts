@@ -6,6 +6,7 @@ import type {
   DirEntryInfo,
   PluginInfo,
   MarketplaceInfo,
+  PluginUpdateCheckResult,
   ToolStatus,
 } from "./types";
 
@@ -69,6 +70,39 @@ export function updateClaudeMarketplace(
   marketplaceName: string
 ): Promise<string> {
   return invoke("update_claude_marketplace", { marketplaceName });
+}
+
+// 检查 Claude 插件更新状态
+// claudeHome 为 Claude 配置根目录，后端据此定位本地插件与市场配置。
+export function checkClaudePluginUpdates(
+  claudeHome: string
+): Promise<PluginUpdateCheckResult> {
+  return invoke("check_claude_plugin_updates", { claudeHome });
+}
+
+// 检查 Codex 插件更新状态
+// codexHome 为 Codex 配置根目录，后端据此定位本地 marketplace 与插件安装目录。
+export function checkCodexPluginUpdates(
+  codexHome: string
+): Promise<PluginUpdateCheckResult> {
+  return invoke("check_codex_plugin_updates", { codexHome });
+}
+
+// 刷新 Codex marketplace，确保随后安装插件时拿到最新索引
+// marketplaceName 为要更新的 marketplace 名称。
+export function updateCodexMarketplace(
+  marketplaceName: string
+): Promise<string> {
+  return invoke("update_codex_marketplace", { marketplaceName });
+}
+
+// 更新 Codex 指定插件
+// pluginId 为插件完整 ID，marketplace 为插件所属市场，后端需要两者共同定位安装来源。
+export function updateCodexPlugin(
+  pluginId: string,
+  marketplace: string
+): Promise<string> {
+  return invoke("update_codex_plugin", { pluginId, marketplace });
 }
 
 // 探测本机 AI 工具安装状态

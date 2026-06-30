@@ -49,6 +49,31 @@ export interface MarketplaceInfo {
   last_updated: string; // 最近更新时间
 }
 
+// 插件更新状态，对应 Rust 后端计算出的版本比较结果
+export type PluginUpdateStatus = "same" | "newer" | "different" | "unknown";
+
+// 工具无关插件信息，对应 Rust ToolPluginInfo
+export interface ToolPluginInfo {
+  id: string; // 插件完整 ID
+  name: string; // 插件短名称
+  marketplace: string; // marketplace 名称
+  current_version: string; // 当前已安装版本
+  available_version: string; // 可用最新版本
+  scope: string; // 安装作用域，Codex 为空字符串
+  enabled: boolean; // 插件是否启用
+  install_path: string; // 插件安装路径
+  last_updated: string; // 最近更新时间
+  update_status: PluginUpdateStatus; // 更新状态
+}
+
+// 插件更新检查结果，对应 Rust PluginUpdateCheckResult
+export interface PluginUpdateCheckResult {
+  tool: "claude" | "codex"; // 工具标识
+  plugins: ToolPluginInfo[]; // 插件信息列表
+  raw_output: string; // CLI 原始输出
+  diagnostics?: string; // 诊断信息，兼容 Rust 新增字段
+}
+
 // 工具探测结果，对应 Rust ToolStatus
 export interface ToolStatus {
   id: string; // 工具标识
