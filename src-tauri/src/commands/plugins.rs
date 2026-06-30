@@ -48,6 +48,8 @@ pub struct PluginUpdateCheckResult {
     pub plugins: Vec<ToolPluginInfo>,
     // raw_output 存储 CLI 原始 stdout，解析异常或诊断时便于排查
     pub raw_output: String,
+    // diagnostics 存储成功时 CLI stderr 中的提示信息，供前端按需展示 warning。
+    pub diagnostics: String,
 }
 
 // 单个插件的统一展示信息，供前端跨工具复用
@@ -164,7 +166,8 @@ fn json_bool(item: &serde_json::Value, field: &str) -> bool {
 }
 
 // 基于 installed/available 数组构建已安装插件的统一更新信息。
-// tool 为工具标识；installed 为已安装插件数组；available_versions 为最新版本映射；field_map 为字段命名差异。
+// tool 为工具标识；installed 为已安装插件数组；available_versions 为最新版本映射；
+// 其余参数用于描述不同 CLI JSON 字段名。
 fn build_plugin_update_result(
     tool: &str,
     installed: &[serde_json::Value],
@@ -216,6 +219,7 @@ fn build_plugin_update_result(
         tool: tool.to_string(),
         plugins,
         raw_output: String::new(),
+        diagnostics: String::new(),
     }
 }
 
@@ -259,6 +263,19 @@ fn parse_claude_plugin_update_json(content: &str) -> Result<PluginUpdateCheckRes
     Ok(result)
 }
 
+// 基于 Claude 更新检查命令的 stdout/stderr 构造统一结果。
+// stdout 为可解析 JSON；stderr 为成功时的 warning/诊断输出。
+fn parse_claude_plugin_update_check_output(
+    stdout: &str,
+    stderr: &str,
+) -> Result<PluginUpdateCheckResult, String> {
+    // result 存储基于 stdout 解析出的 Claude 更新检查结果。
+    let mut result = parse_claude_plugin_update_json(stdout)?;
+    // 成功时 stderr 只作为诊断信息保留，不能参与 JSON 解析。
+    result.diagnostics = stderr.trim().to_string();
+    Ok(result)
+}
+
 // 解析 Codex plugin list --json --available 输出。
 // content 为 Codex CLI stdout 返回的 JSON 文本。
 fn parse_codex_plugin_update_json(content: &str) -> Result<PluginUpdateCheckResult, String> {
@@ -299,9 +316,36 @@ fn parse_codex_plugin_update_json(content: &str) -> Result<PluginUpdateCheckResu
     Ok(result)
 }
 
-// 执行插件相关 CLI 命令并返回合并后的可读输出。
+// 基于 Codex 更新检查命令的 stdout/stderr 构造统一结果。
+// stdout 为可解析 JSON；stderr 为成功时的 warning/诊断输出。
+fn parse_codex_plugin_update_check_output(
+    stdout: &str,
+    stderr: &str,
+) -> Result<PluginUpdateCheckResult, String> {
+    // result 存储基于 stdout 解析出的 Codex 更新检查结果。
+    let mut result = parse_codex_plugin_update_json(stdout)?;
+    // 成功时 stderr 只作为诊断信息保留，不能参与 JSON 解析。
+    result.diagnostics = stderr.trim().to_string();
+    Ok(result)
+}
+
+// 插件 CLI 的原始执行结果：为更新检查保留纯 stdout/stderr，为更新命令保留错误透传能力。
+#[derive(Debug, Clone)]
+struct PluginCliOutput {
+    // stdout 存储命令标准输出文本。
+    stdout: String,
+    // stderr 存储命令标准错误文本。
+    stderr: String,
+}
+
+// 执行插件相关 CLI 命令并返回拆分后的 stdout/stderr。
 // bin 为命令名；args 为命令参数；home_env_key 为工具根目录环境变量名；home_dir 为工具根目录。
-fn run_plugin_cli(bin: &str, args: &[&str], home_env_key: &str, home_dir: &str) -> Result<String, String> {
+fn run_plugin_cli_raw(
+    bin: &str,
+    args: &[&str],
+    home_env_key: &str,
+    home_dir: &str,
+) -> Result<PluginCliOutput, String> {
     // expanded_home 存储展开后的工具根目录，确保 ~ 能被 CLI 正确识别。
     let expanded_home = expand_home(home_dir);
     // output 为插件 CLI 命令执行结果；注入 home 环境变量以显式命中用户当前配置目录。
@@ -311,44 +355,54 @@ fn run_plugin_cli(bin: &str, args: &[&str], home_env_key: &str, home_dir: &str) 
         .output()
         .map_err(|e| format!("执行 {} CLI 失败（请确认已安装 {}）: {}", bin, bin, e))?;
     // stdout 存储命令标准输出文本。
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     // stderr 存储命令标准错误文本。
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    // merged_output 存储合并后的可读结果，供错误回显与前端展示复用。
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    // merged_output 存储失败时要原样透传给调用方的合并结果。
     let merged_output = format!("{}\n{}", stdout, stderr).trim().to_string();
     if output.status.success() {
-        Ok(merged_output)
+        Ok(PluginCliOutput { stdout, stderr })
     } else {
         Err(format!("执行命令失败:\n{}", merged_output).trim().to_string())
     }
+}
+
+// 执行插件相关 CLI 命令并返回合并后的可读输出。
+// bin 为命令名；args 为命令参数；home_env_key 为工具根目录环境变量名；home_dir 为工具根目录。
+fn run_plugin_cli(bin: &str, args: &[&str], home_env_key: &str, home_dir: &str) -> Result<String, String> {
+    // output 存储拆分后的 CLI 输出，供更新命令复用原有“stdout+stderr 合并返回”行为。
+    let output = run_plugin_cli_raw(bin, args, home_env_key, home_dir)?;
+    // merged_output 存储合并后的可读结果，供错误回显与前端展示复用。
+    let merged_output = format!("{}\n{}", output.stdout, output.stderr).trim().to_string();
+    Ok(merged_output)
 }
 
 // 检查 Claude 已安装插件是否存在可用更新。
 // claude_home 为 Claude 配置根目录，用于让 CLI 指向用户当前选择的 Claude 环境。
 #[tauri::command]
 pub fn check_claude_plugin_updates(claude_home: String) -> Result<PluginUpdateCheckResult, String> {
-    // output 存储 claude plugin list --json --available 的 JSON 输出文本。
-    let output = run_plugin_cli(
+    // output 存储 claude plugin list --json --available 的原始 stdout/stderr。
+    let output = run_plugin_cli_raw(
         "claude",
         &["plugin", "list", "--json", "--available"],
         "CLAUDE_HOME",
         &claude_home,
     )?;
-    parse_claude_plugin_update_json(&output)
+    parse_claude_plugin_update_check_output(&output.stdout, &output.stderr)
 }
 
 // 检查 Codex 已安装插件是否存在可用更新。
 // codex_home 为 Codex 配置根目录，用于让 CLI 指向用户当前选择的 Codex 环境。
 #[tauri::command]
 pub fn check_codex_plugin_updates(codex_home: String) -> Result<PluginUpdateCheckResult, String> {
-    // output 存储 codex plugin list --available --json 的 JSON 输出文本。
-    let output = run_plugin_cli(
+    // output 存储 codex plugin list --available --json 的原始 stdout/stderr。
+    let output = run_plugin_cli_raw(
         "codex",
         &["plugin", "list", "--available", "--json"],
         "CODEX_HOME",
         &codex_home,
     )?;
-    parse_codex_plugin_update_json(&output)
+    parse_codex_plugin_update_check_output(&output.stdout, &output.stderr)
 }
 
 // 读取已安装插件列表（解析 ~/.claude/plugins/installed_plugins.json）
@@ -589,6 +643,71 @@ mod tests {
         assert_eq!(result.plugins.len(), 1);
         assert_eq!(result.plugins[0].id, "browser@openai-bundled");
         assert_eq!(result.plugins[0].marketplace, "openai-bundled");
+        assert_eq!(result.plugins[0].update_status, "newer");
+    }
+
+    // 验证更新检查只会解析 stdout 中的 JSON，不会被 stderr warning 污染。
+    #[test]
+    fn test_parse_claude_plugin_update_check_output_ignores_stderr_warning() {
+        // stdout 存储 Claude CLI 成功时返回的 JSON 文本。
+        let stdout = r#"{
+          "installed": [
+            {
+              "id": "superpowers@superpowers-dev",
+              "version": "6.0.3",
+              "scope": "user",
+              "enabled": true,
+              "installPath": "/tmp/superpowers/6.0.3",
+              "lastUpdated": "2026-06-29T08:10:22.693Z"
+            }
+          ],
+          "available": [
+            {
+              "pluginId": "superpowers@superpowers-dev",
+              "version": "6.0.4"
+            }
+          ]
+        }"#;
+        // stderr 存储 CLI 成功时额外打印的 warning 文本。
+        let stderr = "warning: using cached marketplace index";
+
+        // result 存储基于 stdout/stderr 构造出的统一更新检查结果。
+        let result = parse_claude_plugin_update_check_output(stdout, stderr)
+            .expect("stderr warning 不应污染 Claude 更新检查 JSON 解析");
+        assert_eq!(result.raw_output, stdout);
+        assert_eq!(result.plugins[0].available_version, "6.0.4");
+    }
+
+    // 验证 Codex 更新检查同样只解析 stdout，并保留 warning 作为诊断信息。
+    #[test]
+    fn test_parse_codex_plugin_update_check_output_ignores_stderr_warning() {
+        // stdout 存储 Codex CLI 成功时返回的 JSON 文本。
+        let stdout = r#"{
+          "installed": [
+            {
+              "id": "browser@openai-bundled",
+              "name": "browser",
+              "marketplace": "openai-bundled",
+              "version": "1.0.0",
+              "enabled": true,
+              "install_path": "/tmp/browser/1.0.0",
+              "last_updated": "2026-06-29T08:10:22.693Z"
+            }
+          ],
+          "available": [
+            {
+              "id": "browser@openai-bundled",
+              "version": "1.1.0"
+            }
+          ]
+        }"#;
+        // stderr 存储 CLI 成功时额外打印的 warning 文本。
+        let stderr = "warning: marketplace metadata is stale";
+
+        // result 存储基于 stdout/stderr 构造出的统一更新检查结果。
+        let result = parse_codex_plugin_update_check_output(stdout, stderr)
+            .expect("stderr warning 不应污染 Codex 更新检查 JSON 解析");
+        assert_eq!(result.raw_output, stdout);
         assert_eq!(result.plugins[0].update_status, "newer");
     }
 }
