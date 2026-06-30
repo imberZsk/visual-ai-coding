@@ -1,7 +1,9 @@
 // Codex 配置页：可视化展示并编辑 ~/.codex 下的各类配置文件
 import { CODEX_CONFIG_FILES } from "../config";
+import { CODEX_CONFIG_SCHEMA } from "../config/codexConfigSchema";
 import { PageHeader } from "../components/ui";
 import ConfigEditor from "../components/ConfigEditor";
+import VisualConfigEditor from "../components/VisualConfigEditor";
 
 // Codex 配置页组件
 export default function CodexPage() {
@@ -13,9 +15,13 @@ export default function CodexPage() {
       />
       {/* 逐个渲染配置文件编辑器 */}
       <div className="space-y-4">
-        {CODEX_CONFIG_FILES.map((spec) => (
-          <ConfigEditor key={spec.id} spec={spec} />
-        ))}
+        {CODEX_CONFIG_FILES.map((spec) =>
+          spec.id === "codex-config" ? (
+            <VisualConfigEditor key={spec.id} spec={spec} schema={CODEX_CONFIG_SCHEMA} />
+          ) : (
+            <ConfigEditor key={spec.id} spec={spec} />
+          )
+        )}
       </div>
     </div>
   );
