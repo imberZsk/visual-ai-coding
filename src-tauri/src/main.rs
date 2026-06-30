@@ -10,7 +10,9 @@ use commands::preferences::{get_preferences, save_preferences};
 use commands::settings::{list_dir, read_config_file, save_config_file};
 // 插件与市场命令
 use commands::plugins::{
-    list_claude_marketplaces, list_claude_plugins, update_claude_marketplace, update_claude_plugin,
+    check_claude_plugin_updates, check_codex_plugin_updates, list_claude_marketplaces,
+    list_claude_plugins, update_claude_marketplace, update_claude_plugin, update_codex_marketplace,
+    update_codex_plugin,
 };
 // 系统集成命令
 use commands::system::{detect_tools, open_in_vscode, reveal_in_finder};
@@ -27,8 +29,12 @@ fn main() {
             list_dir,
             list_claude_plugins,
             list_claude_marketplaces,
+            check_claude_plugin_updates,
+            check_codex_plugin_updates,
             update_claude_plugin,
             update_claude_marketplace,
+            update_codex_plugin,
+            update_codex_marketplace,
             detect_tools,
             open_in_vscode,
             reveal_in_finder
