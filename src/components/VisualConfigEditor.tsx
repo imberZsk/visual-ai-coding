@@ -54,6 +54,16 @@ function serializeConfigContent(
   return TOML.stringify(value);
 }
 
+// 将未知字段值格式化为适合只读展示的文本。
+// value 参数存储未知字段当前值，供高级字段区域展示实际内容。
+function formatUnknownFieldValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return JSON.stringify(value, null, 2) ?? "";
+}
+
 // 可视化配置编辑器：在 raw 与 visual 两种视图之间切换，并保留未知字段。
 // spec 描述文件位置和只读属性，schema 描述可视化字段分组和控件。
 export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorProps) {
@@ -65,6 +75,10 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   const [rawDraft, setRawDraft] = useState("");
   // configDraft 存储可视化表单对应的配置对象。
   const [configDraft, setConfigDraft] = useState<Record<string, unknown>>({});
+  // baselineRawText 存储最近一次成功加载后的原始文本基线，用于 raw 模式判断是否真的修改过。
+  const [baselineRawText, setBaselineRawText] = useState("");
+  // baselineVisualText 存储最近一次成功加载后的规范化文本基线，用于 visual 模式避免因格式化差异误报未保存。
+  const [baselineVisualText, setBaselineVisualText] = useState("");
   // activeView 存储当前展示的是可视化还是原始文本视图。
   const [activeView, setActiveView] = useState<"visual" | "raw">("visual");
   // saving 标记当前是否正在保存。
@@ -92,17 +106,18 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   // dirty 标记当前编辑状态是否相对磁盘内容发生变化。
   const dirty =
     file !== null &&
-    ((activeView === "raw" && rawDraft !== file.content) ||
+    ((activeView === "raw" && rawDraft !== baselineRawText) ||
       (activeView === "visual" &&
-        serializeConfigContent(configDraft, schema.format) !== file.content));
+        serializeConfigContent(configDraft, schema.format) !== baselineVisualText));
 
   // applyParsedDraft 负责把解析成功的对象同步到 visual 状态，并清理解析错误。
   // content 参数存储原始配置文本。
-  function applyParsedDraft(content: string) {
+  function applyParsedDraft(content: string): Record<string, unknown> {
     // parsedConfig 存储解析后的配置对象。
     const parsedConfig = parseConfigContent(content, schema.format);
     setConfigDraft(parsedConfig);
     setParseError(null);
+    return parsedConfig;
   }
 
   // load 负责从后端读取配置，并初始化 raw / visual 双份草稿。
@@ -115,14 +130,20 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
       const loadedFile = await readConfigFile(spec.id, spec.title, absPath, spec.readonly);
       setFile(loadedFile);
       setRawDraft(loadedFile.content);
+      setBaselineRawText(loadedFile.content);
 
       try {
-        applyParsedDraft(loadedFile.content);
+        // parsedConfig 存储当前文件解析后的结构化配置，用来计算 visual 模式的规范化基线。
+        const parsedConfig = applyParsedDraft(loadedFile.content);
+        // normalizedVisualText 存储按当前格式规范化后的文本，避免 visual 模式把纯格式差异误判成脏数据。
+        const normalizedVisualText = serializeConfigContent(parsedConfig, schema.format);
+        setBaselineVisualText(normalizedVisualText);
         setActiveView("visual");
       } catch (error) {
         // 读取到损坏配置时，业务上优先回退 raw 模式，让用户至少还能直接修文本。
         setParseError(String(error));
         setConfigDraft({});
+        setBaselineVisualText("");
         setActiveView("raw");
       }
     } catch (error) {
@@ -136,7 +157,7 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
     if (home) {
       void load();
     }
-  }, [home, spec.id]);
+  }, [absPath, home, spec.id, spec.readonly, spec.relPath, spec.title]);
 
   // handleFieldChange 负责更新单个可视化字段，并立刻同步 raw 草稿以保持两视图一致。
   // path 参数存储字段路径，value 参数存储字段新值。
@@ -307,12 +328,24 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
               {unknownKeys.length === 0 ? (
                 <div>没有未知字段</div>
               ) : (
-                <div className="flex flex-wrap gap-2">
-                  {unknownKeys.map((key) => (
-                    <Badge key={key} tone="neutral">
-                      {key}
-                    </Badge>
-                  ))}
+                <div className="space-y-3">
+                  {unknownKeys.map((key) => {
+                    // unknownValue 存储当前未知字段在配置对象中的真实值。
+                    const unknownValue = getValueAtPath(configDraft, key);
+                    // unknownValueText 存储格式化后的未知字段文本，用于只读展示实际内容。
+                    const unknownValueText = formatUnknownFieldValue(unknownValue);
+
+                    return (
+                      <div key={key} className="rounded-lg border border-border bg-surface p-3">
+                        <div className="mb-2">
+                          <Badge tone="neutral">{key}</Badge>
+                        </div>
+                        <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-text-main">
+                          {unknownValueText}
+                        </pre>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
