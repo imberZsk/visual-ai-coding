@@ -9,6 +9,12 @@ type VersionParts = {
 // CompareResult 存储插件版本比较函数对外返回的分类结果。
 type CompareResult = "newer" | "same" | "different" | "unknown";
 
+// PrereleaseIdentifier 存储 prerelease 中单个点分段的原始值与是否纯数字的判定结果。
+type PrereleaseIdentifier = {
+  value: string;
+  isNumeric: boolean;
+};
+
 // 判断版本字符串是否为空，version 参数存储待校验的版本字符串，空值通常代表上游没有给出有效版本。
 function isMissingVersion(version: string): boolean {
   return version.trim().length === 0;
@@ -31,31 +37,54 @@ function parseVersion(version: string): VersionParts | null {
   };
 }
 
-// 比较两个预发布标记，left 和 right 分别存储左右两侧的 prerelease 标签，数字后缀按数值大小排序，其余按字典序排序。
+// 将 prerelease 字符串拆成 semver-like 点分段，prerelease 参数存储待拆分的预发布标签，后续比较需要逐段判断数字与字符串优先级。
+function splitPrerelease(prerelease: string): PrereleaseIdentifier[] {
+  // identifiers 存储 prerelease 按点号拆分后的所有分段。
+  const identifiers = prerelease.split(".");
+
+  return identifiers.map((identifier) => ({
+    // value 存储单个 prerelease 分段的原始文本。
+    value: identifier,
+    // isNumeric 存储当前分段是否为纯数字，纯数字段需要按数值排序。
+    isNumeric: /^\d+$/.test(identifier),
+  }));
+}
+
+// 比较两个预发布标记，left 和 right 分别存储左右两侧的 prerelease 标签，按 semver-like 规则逐段比较点分段。
 function comparePrerelease(left: string, right: string): number {
-  // leftMatch 存储左侧预发布标记的字母前缀与数字后缀。
-  const leftMatch = left.match(/^([a-zA-Z-]+)(\d+)?$/);
-  // rightMatch 存储右侧预发布标记的字母前缀与数字后缀。
-  const rightMatch = right.match(/^([a-zA-Z-]+)(\d+)?$/);
+  // leftIdentifiers 存储左侧 prerelease 按点号拆分后的分段列表。
+  const leftIdentifiers = splitPrerelease(left);
+  // rightIdentifiers 存储右侧 prerelease 按点号拆分后的分段列表。
+  const rightIdentifiers = splitPrerelease(right);
+  // sharedLength 存储左右两侧可逐段对齐比较的最短长度。
+  const sharedLength = Math.min(leftIdentifiers.length, rightIdentifiers.length);
 
-  if (!leftMatch || !rightMatch) {
-    return left.localeCompare(right);
+  // index 存储当前正在比较的 prerelease 分段位置。
+  for (let index = 0; index < sharedLength; index += 1) {
+    // leftIdentifier 存储左侧当前分段的值与类型信息。
+    const leftIdentifier = leftIdentifiers[index];
+    // rightIdentifier 存储右侧当前分段的值与类型信息。
+    const rightIdentifier = rightIdentifiers[index];
+
+    if (leftIdentifier.value === rightIdentifier.value) {
+      continue;
+    }
+
+    // semver 规定纯数字分段优先级低于非数字分段，因此这里需要先按类型分流。
+    if (leftIdentifier.isNumeric && rightIdentifier.isNumeric) {
+      return Number(leftIdentifier.value) - Number(rightIdentifier.value);
+    }
+
+    // 一边是数字一边是字符串时，数字分段代表更早的 prerelease。
+    if (leftIdentifier.isNumeric !== rightIdentifier.isNumeric) {
+      return leftIdentifier.isNumeric ? -1 : 1;
+    }
+
+    return leftIdentifier.value.localeCompare(rightIdentifier.value);
   }
 
-  if (leftMatch[1] !== rightMatch[1]) {
-    return leftMatch[1].localeCompare(rightMatch[1]);
-  }
-
-  // leftNumber 存储左侧预发布标记中用于排序的数字后缀。
-  const leftNumber = leftMatch[2];
-  // rightNumber 存储右侧预发布标记中用于排序的数字后缀。
-  const rightNumber = rightMatch[2];
-
-  if (leftNumber && rightNumber) {
-    return Number(leftNumber) - Number(rightNumber);
-  }
-
-  return left.localeCompare(right);
+  // 当前缀完全一致时，段数更少的 prerelease 优先级更低，符合 semver 对附加分段的定义。
+  return leftIdentifiers.length - rightIdentifiers.length;
 }
 
 // 按插件版本比较规则判断当前版本相对可用版本是更新、相同、不同还是未知，current 存储当前版本，available 存储可用版本。

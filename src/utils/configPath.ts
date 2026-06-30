@@ -152,8 +152,16 @@ export function listUnknownTopLevelKeys(
 ): string[] {
   // knownTopLevelKeys 存储 schema 已声明支持的顶层 key 集合。
   const knownTopLevelKeys = new Set(
-    // knownPath 参数存储 schema 中的单个已知路径。
-    knownPaths.map((knownPath) => splitPath(knownPath)[0]).filter(Boolean)
+    // 这里先把每条 schema 路径折叠成顶层 key，后续 unknown 检测只关心顶层字段是否已被 schema 覆盖。
+    knownPaths
+      .map(
+        // knownPath 参数存储 schema 中的单个已知路径。
+        (knownPath) => splitPath(knownPath)[0]
+      )
+      .filter(
+        // topLevelKey 参数存储 map 后得到的顶层 key，空值需要过滤掉以避免污染已知 key 集合。
+        (topLevelKey) => Boolean(topLevelKey)
+      )
   );
 
   // key 参数存储 source 中待判断是否未知的顶层字段名。

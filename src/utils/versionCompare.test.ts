@@ -39,6 +39,18 @@ describe("comparePluginVersions", () => {
     );
   });
 
+  // 该回调用于验证带点号分段的 prerelease 会按 semver-like 规则逐段比较，而不是按整串字典序误判。
+  it("detects prerelease updates across dot-separated identifiers", () => {
+    // currentVersion 存储当前安装的较旧 prerelease 版本号。
+    const currentVersion = "1.0.0-alpha.2";
+    // availableVersion 存储同前缀下更高数字分段的 prerelease 版本号。
+    const availableVersion = "1.0.0-alpha.10";
+
+    expect(comparePluginVersions(currentVersion, availableVersion)).toBe(
+      "newer"
+    );
+  });
+
   // 该回调用于验证非 semver 字符串与空字符串的兜底分支。
   it("marks non-semver unequal versions as different", () => {
     expect(comparePluginVersions("local-dev", "remote-dev")).toBe("different");
