@@ -71,7 +71,7 @@ export interface PluginUpdateCheckResult {
   tool: "claude" | "codex"; // 工具标识
   plugins: ToolPluginInfo[]; // 插件信息列表
   raw_output: string; // CLI 原始输出
-  diagnostics?: string; // 诊断信息，兼容 Rust 新增字段
+  diagnostics: string; // 诊断信息，对应 Rust 必填字段
 }
 
 // 工具探测结果，对应 Rust ToolStatus
