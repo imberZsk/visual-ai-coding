@@ -9,3 +9,6 @@ dist-ssr
 
 # Tauri
 src-tauri/target
+
+# Superpowers scratch state
+.superpowers/

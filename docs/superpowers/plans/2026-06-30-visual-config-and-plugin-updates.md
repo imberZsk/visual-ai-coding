@@ -85,6 +85,90 @@ npm install -D vitest jsdom @testing-library/react @testing-library/jest-dom @te
 
 Expected: `package.json` and `package-lock.json` gain the dev dependencies.
 
+- [ ] **Step 1.5: Add test scripts and Vitest config before RED runs**
+
+Modify `package.json` scripts:
+
+```json
+{
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  }
+}
+```
+
+Modify `vite.config.ts`:
+
+```typescript
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+// Vite 与 Vitest 配置：固定 Tauri 开发端口，并为 React 组件测试启用 jsdom。
+export default defineConfig({
+  plugins: [react()],
+  // 防止 Tauri 开发环境清屏，保留 Rust 端日志。
+  clearScreen: false,
+  server: {
+    // port 存储 Tauri 前端开发服务器固定端口。
+    port: 1420,
+    strictPort: true,
+    watch: {
+      // ignored 存储不触发前端热更新的 Rust 文件匹配规则。
+      ignored: ["**/src-tauri/**"],
+    },
+  },
+  test: {
+    // environment 存储 React Testing Library 所需的浏览器模拟环境。
+    environment: "jsdom",
+    // setupFiles 存储 Vitest 启动时加载的测试初始化文件。
+    setupFiles: "src/test/setup.ts",
+    // globals 存储是否启用全局 describe/it/expect。
+    globals: true,
+  },
+});
+```
+
+Modify `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["vitest/globals", "@testing-library/jest-dom"]
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
+```
+
+Create `src/test/setup.ts`:
+
+```typescript
+// jest-dom 扩展 Vitest 的 DOM 断言能力，例如 toBeInTheDocument。
+import "@testing-library/jest-dom/vitest";
+```
+
 - [ ] **Step 2: Add the failing config path tests**
 
 Create `src/utils/configPath.test.ts`:
@@ -176,7 +260,7 @@ Run:
 npm test -- src/utils/configPath.test.ts
 ```
 
-Expected: FAIL because `vitest` script and `src/utils/configPath.ts` do not exist yet, or because the exported helper functions are missing.
+Expected: FAIL because `src/utils/configPath.ts` does not exist yet, or because the exported helper functions are missing.
 
 - [ ] **Step 4: Add the failing version comparison tests**
 
@@ -215,91 +299,7 @@ npm test -- src/utils/versionCompare.test.ts
 
 Expected: FAIL because `src/utils/versionCompare.ts` does not exist yet.
 
-- [ ] **Step 6: Add test scripts and Vitest config**
-
-Modify `package.json` scripts:
-
-```json
-{
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  }
-}
-```
-
-Modify `vite.config.ts`:
-
-```typescript
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-
-// Vite 与 Vitest 配置：固定 Tauri 开发端口，并为 React 组件测试启用 jsdom。
-export default defineConfig({
-  plugins: [react()],
-  // 防止 Tauri 开发环境清屏，保留 Rust 端日志。
-  clearScreen: false,
-  server: {
-    // port 存储 Tauri 前端开发服务器固定端口。
-    port: 1420,
-    strictPort: true,
-    watch: {
-      // ignored 存储不触发前端热更新的 Rust 文件匹配规则。
-      ignored: ["**/src-tauri/**"],
-    },
-  },
-  test: {
-    // environment 存储 React Testing Library 所需的浏览器模拟环境。
-    environment: "jsdom",
-    // setupFiles 存储 Vitest 启动时加载的测试初始化文件。
-    setupFiles: "src/test/setup.ts",
-    // globals 存储是否启用全局 describe/it/expect。
-    globals: true,
-  },
-});
-```
-
-Modify `tsconfig.json`:
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "types": ["vitest/globals", "@testing-library/jest-dom"]
-  },
-  "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
-}
-```
-
-Create `src/test/setup.ts`:
-
-```typescript
-// jest-dom 扩展 Vitest 的 DOM 断言能力，例如 toBeInTheDocument。
-import "@testing-library/jest-dom/vitest";
-```
-
-- [ ] **Step 7: Implement config path helpers**
+- [ ] **Step 6: Implement config path helpers**
 
 Create `src/utils/configPath.ts`:
 
@@ -456,7 +456,7 @@ export function maskSensitiveValue(value: unknown): string {
 }
 ```
 
-- [ ] **Step 8: Implement version comparison helper**
+- [ ] **Step 7: Implement version comparison helper**
 
 Create `src/utils/versionCompare.ts`:
 
@@ -562,7 +562,7 @@ export function comparePluginVersions(
 }
 ```
 
-- [ ] **Step 9: Run frontend helper tests to verify GREEN**
+- [ ] **Step 8: Run frontend helper tests to verify GREEN**
 
 Run:
 
@@ -572,7 +572,7 @@ npm test -- src/utils/configPath.test.ts src/utils/versionCompare.test.ts
 
 Expected: PASS for all helper tests.
 
-- [ ] **Step 10: Commit Task 1**
+- [ ] **Step 9: Commit Task 1**
 
 Run:
 
