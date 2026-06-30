@@ -164,8 +164,10 @@ export function listUnknownTopLevelKeys(
       )
   );
 
-  // key 参数存储 source 中待判断是否未知的顶层字段名。
-  return Object.keys(source).filter((key) => !knownTopLevelKeys.has(key));
+  return Object.keys(source).filter(
+    // key 参数存储 source 中待判断是否未知的顶层字段名。
+    (key) => !knownTopLevelKeys.has(key)
+  );
 }
 
 // 判断 key 是否包含常见敏感字段片段，key 参数存储待检查的字段名，用于决定是否掩码显示。

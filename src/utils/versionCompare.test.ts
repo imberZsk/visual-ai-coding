@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { comparePluginVersions } from "./versionCompare";
 
+// 该测试套件回调用于集中验证 comparePluginVersions 在正式版、预发布版与兜底分支下的比较行为。
 describe("comparePluginVersions", () => {
   // 该回调用于验证标准语义版本的升降序比较结果。
   it("detects semver updates", () => {

@@ -42,12 +42,15 @@ function splitPrerelease(prerelease: string): PrereleaseIdentifier[] {
   // identifiers 存储 prerelease 按点号拆分后的所有分段。
   const identifiers = prerelease.split(".");
 
-  return identifiers.map((identifier) => ({
-    // value 存储单个 prerelease 分段的原始文本。
-    value: identifier,
-    // isNumeric 存储当前分段是否为纯数字，纯数字段需要按数值排序。
-    isNumeric: /^\d+$/.test(identifier),
-  }));
+  return identifiers.map(
+    // identifier 参数存储当前正在转换的单个 prerelease 分段文本。
+    (identifier) => ({
+      // value 存储单个 prerelease 分段的原始文本。
+      value: identifier,
+      // isNumeric 存储当前分段是否为纯数字，纯数字段需要按数值排序。
+      isNumeric: /^\d+$/.test(identifier),
+    })
+  );
 }
 
 // 比较两个预发布标记，left 和 right 分别存储左右两侧的 prerelease 标签，按 semver-like 规则逐段比较点分段。

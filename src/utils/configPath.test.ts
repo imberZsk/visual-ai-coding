@@ -8,6 +8,7 @@ import {
   setValueAtPath,
 } from "./configPath";
 
+// 该测试套件回调用于集中验证 configPath helpers 的路径读取、写入、删除与敏感字段辅助行为。
 describe("configPath helpers", () => {
   // 该回调验证读取嵌套路径与带引号片段的配置值。
   it("reads nested object paths and quoted path segments", () => {
