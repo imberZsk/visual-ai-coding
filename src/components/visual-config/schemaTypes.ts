@@ -8,6 +8,7 @@ export type VisualConfigControl =
   | "number"
   | "select"
   | "string-list"
+  | "json-value"
   | "json-object"
   | "toml-object";
 

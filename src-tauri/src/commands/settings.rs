@@ -42,7 +42,12 @@ fn detect_format(path: &Path) -> String {
 
 // 读取单个配置文件为 ConfigFile 结构
 #[tauri::command]
-pub fn read_config_file(id: String, title: String, path: String, readonly: bool) -> Result<ConfigFile, String> {
+pub fn read_config_file(
+    id: String,
+    title: String,
+    path: String,
+    readonly: bool,
+) -> Result<ConfigFile, String> {
     // abs 为展开后的绝对路径
     let abs = expand_home(&path);
     // exists 标记文件是否存在

@@ -7,6 +7,7 @@ export default {
       colors: {
         // 主题语义色，通过 CSS 变量驱动，支持运行时切换
         surface: "rgb(var(--surface) / <alpha-value>)",
+        sidebar: "rgb(var(--sidebar) / <alpha-value>)",
         panel: "rgb(var(--panel) / <alpha-value>)",
         border: "rgb(var(--border) / <alpha-value>)",
         accent: "rgb(var(--accent) / <alpha-value>)",

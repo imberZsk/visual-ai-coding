@@ -113,7 +113,8 @@ pub fn save_preferences(prefs: Preferences) -> Result<(), String> {
     // path 为偏好文件路径
     let path = preferences_path()?;
     // json 为格式化后的偏好文本，便于用户手动查看
-    let json = serde_json::to_string_pretty(&prefs).map_err(|e| format!("序列化偏好失败: {}", e))?;
+    let json =
+        serde_json::to_string_pretty(&prefs).map_err(|e| format!("序列化偏好失败: {}", e))?;
     // 原子写入：避免写入中途崩溃损坏偏好文件
     super::util::atomic_write(&path, &json)?;
     Ok(())

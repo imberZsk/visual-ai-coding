@@ -99,9 +99,8 @@ export interface NavItem {
 
 // 主导航页签
 export const NAV_ITEMS: NavItem[] = [
-  { id: "dashboard", label: "概览" },
   { id: "claude", label: "Claude Code" },
   { id: "codex", label: "Codex" },
   { id: "plugins", label: "插件" },
-  { id: "settings", label: "应用设置" },
+  { id: "skills", label: "技能" },
 ];

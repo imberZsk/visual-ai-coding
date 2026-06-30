@@ -2,6 +2,7 @@
 use super::util::{command_with_path, expand_home};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 // 单个已安装插件的可视化信息
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -77,6 +78,130 @@ pub struct ToolPluginInfo {
     pub update_status: String,
 }
 
+// VersionParts 存储从版本字符串中解析出的 semver-like 主干与预发布标签。
+#[derive(Debug)]
+struct VersionParts {
+    // major 存储主版本号。
+    major: u64,
+    // minor 存储次版本号。
+    minor: u64,
+    // patch 存储补丁版本号。
+    patch: u64,
+    // prerelease 存储预发布标签；正式版为 None。
+    prerelease: Option<String>,
+}
+
+// PrereleaseIdentifier 存储 prerelease 点分段的文本与数字类型信息。
+#[derive(Debug)]
+struct PrereleaseIdentifier {
+    // value 存储当前 prerelease 分段的原始文本。
+    value: String,
+    // is_numeric 标记当前分段是否为纯数字，纯数字需要按数值比较。
+    is_numeric: bool,
+}
+
+// 解析 semver-like 版本字符串。
+// version 为待解析的版本文本，必须形如 1.2.3 或 1.2.3-beta.1。
+fn parse_semver_like(version: &str) -> Option<VersionParts> {
+    // trimmed 存储去掉首尾空白后的版本文本。
+    let trimmed = version.trim();
+    // split 存储主版本与 prerelease 的切分结果。
+    let split = trimmed.split_once('-');
+    // core 存储 semver 主版本部分。
+    let core = split.map(|parts| parts.0).unwrap_or(trimmed);
+    // prerelease 存储可选的预发布标签。
+    let prerelease = split.map(|parts| parts.1.to_string());
+    // core_parts 存储主版本、次版本、补丁版本三个片段。
+    let core_parts = core.split('.').collect::<Vec<&str>>();
+
+    if core_parts.len() != 3 {
+        return None;
+    }
+
+    if prerelease.as_ref().is_some_and(|value| value.is_empty()) {
+        return None;
+    }
+
+    if prerelease.as_ref().is_some_and(|value| {
+        !value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || character == '.' || character == '-'
+        })
+    }) {
+        return None;
+    }
+
+    Some(VersionParts {
+        major: core_parts[0].parse::<u64>().ok()?,
+        minor: core_parts[1].parse::<u64>().ok()?,
+        patch: core_parts[2].parse::<u64>().ok()?,
+        prerelease,
+    })
+}
+
+// 将 prerelease 字符串拆成可比较的点分段。
+// prerelease 为预发布标签，返回值用于 semver-like 排序。
+fn split_prerelease(prerelease: &str) -> Vec<PrereleaseIdentifier> {
+    prerelease
+        .split('.')
+        .map(|identifier| {
+            // value 存储当前点分段文本。
+            let value = identifier.to_string();
+            // is_numeric 标记当前分段是否能按数字比较。
+            let is_numeric =
+                !value.is_empty() && value.chars().all(|character| character.is_ascii_digit());
+            PrereleaseIdentifier { value, is_numeric }
+        })
+        .collect::<Vec<PrereleaseIdentifier>>()
+}
+
+// 比较两个 prerelease 标签的先后顺序。
+// left 和 right 分别存储左右两个预发布标签；返回负数表示 left 更旧。
+fn compare_prerelease(left: &str, right: &str) -> i8 {
+    // left_identifiers 存储左侧 prerelease 的点分段。
+    let left_identifiers = split_prerelease(left);
+    // right_identifiers 存储右侧 prerelease 的点分段。
+    let right_identifiers = split_prerelease(right);
+    // shared_len 存储左右两侧可逐段比较的长度。
+    let shared_len = left_identifiers.len().min(right_identifiers.len());
+
+    for index in 0..shared_len {
+        // left_identifier 存储左侧当前位置的 prerelease 分段。
+        let left_identifier = &left_identifiers[index];
+        // right_identifier 存储右侧当前位置的 prerelease 分段。
+        let right_identifier = &right_identifiers[index];
+
+        if left_identifier.value == right_identifier.value {
+            continue;
+        }
+
+        if left_identifier.is_numeric && right_identifier.is_numeric {
+            // left_number 存储左侧纯数字 prerelease 分段。
+            let left_number = left_identifier.value.parse::<u64>().unwrap_or(0);
+            // right_number 存储右侧纯数字 prerelease 分段。
+            let right_number = right_identifier.value.parse::<u64>().unwrap_or(0);
+            return if left_number < right_number { -1 } else { 1 };
+        }
+
+        if left_identifier.is_numeric != right_identifier.is_numeric {
+            return if left_identifier.is_numeric { -1 } else { 1 };
+        }
+
+        return if left_identifier.value < right_identifier.value {
+            -1
+        } else {
+            1
+        };
+    }
+
+    if left_identifiers.len() == right_identifiers.len() {
+        0
+    } else if left_identifiers.len() < right_identifiers.len() {
+        -1
+    } else {
+        1
+    }
+}
+
 // 比较已安装版本与 marketplace 可用版本，返回统一更新状态。
 // current 为已安装版本；available 为 marketplace 返回的最新版本。
 fn compare_versions(current: &str, available: &str) -> String {
@@ -87,44 +212,71 @@ fn compare_versions(current: &str, available: &str) -> String {
         return "same".to_string();
     }
 
-    // current_parts 存储当前版本号中可参与比较的数字片段。
-    let current_parts = version_numeric_parts(current);
-    // available_parts 存储可用版本号中可参与比较的数字片段。
-    let available_parts = version_numeric_parts(available);
-    // max_len 存储两侧版本片段长度的较大值，便于逐段比较。
-    let max_len = current_parts.len().max(available_parts.len());
+    // current_parts 存储当前版本解析后的 semver-like 结构。
+    let current_parts = parse_semver_like(current);
+    // available_parts 存储可用版本解析后的 semver-like 结构。
+    let available_parts = parse_semver_like(available);
 
-    // 当两侧都能抽出数字片段时，按 semver-like 主版本/次版本/补丁位顺序比较。
-    // WHY：CLI 返回版本大多是 x.y.z 形式，逐段比较比纯字符串比较更符合用户对“有更新”的预期。
-    if max_len > 0 {
-        for index in 0..max_len {
-            // current_part 存储当前版本在指定位置的数字片段；缺失时按 0 处理。
-            let current_part = *current_parts.get(index).unwrap_or(&0);
-            // available_part 存储可用版本在指定位置的数字片段；缺失时按 0 处理。
-            let available_part = *available_parts.get(index).unwrap_or(&0);
-            if available_part > current_part {
-                return "newer".to_string();
-            }
-            if available_part < current_part {
-                return "different".to_string();
-            }
+    if current_parts.is_none() || available_parts.is_none() {
+        return if current == available {
+            "same"
+        } else {
+            "different"
         }
+        .to_string();
     }
 
-    "different".to_string()
-}
+    // current_parts 存储当前版本结构，前面已确认存在。
+    let current_parts = current_parts.unwrap();
+    // available_parts 存储可用版本结构，前面已确认存在。
+    let available_parts = available_parts.unwrap();
 
-// 提取版本字符串中可比较的数字片段。
-// version 为待解析的版本文本，如 1.2.3 或 1.2.3-beta.1。
-fn version_numeric_parts(version: &str) -> Vec<u64> {
-    // normalized 存储去掉预发布后缀的主版本字符串，避免 beta 文本干扰数值比较。
-    let normalized = version.split('-').next().unwrap_or("");
-    // parts 存储解析出的数字片段列表，供 compare_versions 逐段比较。
-    let parts = normalized
-        .split('.')
-        .filter_map(|part| part.parse::<u64>().ok())
-        .collect::<Vec<u64>>();
-    parts
+    if current_parts.major != available_parts.major {
+        return if current_parts.major < available_parts.major {
+            "newer"
+        } else {
+            "different"
+        }
+        .to_string();
+    }
+    if current_parts.minor != available_parts.minor {
+        return if current_parts.minor < available_parts.minor {
+            "newer"
+        } else {
+            "different"
+        }
+        .to_string();
+    }
+    if current_parts.patch != available_parts.patch {
+        return if current_parts.patch < available_parts.patch {
+            "newer"
+        } else {
+            "different"
+        }
+        .to_string();
+    }
+
+    if current_parts.prerelease == available_parts.prerelease {
+        return "same".to_string();
+    }
+
+    if current_parts.prerelease.is_none() && available_parts.prerelease.is_some() {
+        return "different".to_string();
+    }
+
+    if current_parts.prerelease.is_some() && available_parts.prerelease.is_none() {
+        return "newer".to_string();
+    }
+
+    // current_prerelease 存储当前版本的预发布标签；上方已排除 None 场景。
+    let current_prerelease = current_parts.prerelease.unwrap_or_default();
+    // available_prerelease 存储可用版本的预发布标签；上方已排除 None 场景。
+    let available_prerelease = available_parts.prerelease.unwrap_or_default();
+    if compare_prerelease(&current_prerelease, &available_prerelease) < 0 {
+        "newer".to_string()
+    } else {
+        "different".to_string()
+    }
 }
 
 // 从插件完整 ID 中提取短名称。
@@ -137,6 +289,156 @@ fn plugin_short_name(id: &str) -> String {
 // id 为形如 name@marketplace 的插件完整标识。
 fn plugin_marketplace(id: &str) -> String {
     id.split('@').nth(1).unwrap_or("").to_string()
+}
+
+// toml_bool 读取 TOML 表字段中的布尔值；缺失时返回 false。
+// item 为当前 TOML 表；field 为目标字段名。
+fn toml_bool(item: &toml::value::Table, field: &str) -> bool {
+    item.get(field)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
+// read_codex_config_root 读取 Codex config.toml 并解析为 TOML Value。
+// codex_home 为 Codex home 目录路径。
+fn read_codex_config_root(codex_home: &Path) -> Result<toml::Value, String> {
+    // config_path 存储 Codex config.toml 的绝对路径。
+    let config_path = codex_home.join("config.toml");
+    // content 存储 config.toml 文件文本。
+    let content = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("读取 Codex config.toml 失败: {}", e))?;
+    content
+        .parse::<toml::Value>()
+        .map_err(|e| format!("解析 Codex config.toml 失败: {}", e))
+}
+
+// read_codex_plugin_manifest 读取已安装 Codex 插件的 plugin.json。
+// install_path 为具体版本安装目录。
+fn read_codex_plugin_manifest(install_path: &Path) -> Option<serde_json::Value> {
+    // manifest_path 存储 Codex 插件 manifest 的路径。
+    let manifest_path = install_path.join(".codex-plugin").join("plugin.json");
+    // content 存储 manifest JSON 文本。
+    let content = std::fs::read_to_string(manifest_path).ok()?;
+    serde_json::from_str::<serde_json::Value>(&content).ok()
+}
+
+// latest_codex_plugin_install_path 在本地 cache 中寻找指定插件的最新安装目录。
+// codex_home 为 Codex home；marketplace 与 name 分别为插件来源和短名。
+fn latest_codex_plugin_install_path(
+    codex_home: &Path,
+    marketplace: &str,
+    name: &str,
+) -> Option<PathBuf> {
+    // plugin_root 存储该插件所有版本目录所在位置。
+    let plugin_root = codex_home
+        .join("plugins")
+        .join("cache")
+        .join(marketplace)
+        .join(name);
+    // entries 存储该插件 cache 下的版本目录。
+    let entries = std::fs::read_dir(plugin_root).ok()?;
+    // candidates 存储包含 .codex-plugin/plugin.json 的候选版本目录。
+    let mut candidates = entries
+        .filter_map(|entry| entry.ok().map(|value| value.path()))
+        .filter(|path| path.join(".codex-plugin").join("plugin.json").exists())
+        .collect::<Vec<PathBuf>>();
+
+    candidates.sort_by(|left, right| {
+        // left_name 存储左侧候选目录名。
+        let left_name = left
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("");
+        // right_name 存储右侧候选目录名。
+        let right_name = right
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("");
+        match compare_versions(left_name, right_name).as_str() {
+            "newer" => std::cmp::Ordering::Less,
+            "same" => std::cmp::Ordering::Equal,
+            _ => std::cmp::Ordering::Greater,
+        }
+    });
+    candidates.pop()
+}
+
+// build_codex_fallback_result 在 Codex CLI 因 marketplace 损坏失败时，从本地配置/cache 构造降级结果。
+// codex_home 为 Codex home；diagnostics 为原始 CLI 错误文本。
+fn build_codex_fallback_result(
+    codex_home: &Path,
+    diagnostics: &str,
+) -> Result<PluginUpdateCheckResult, String> {
+    // root 存储解析后的 Codex config.toml。
+    let root = read_codex_config_root(codex_home)?;
+    // plugins_table 存储 config.toml 中的 [plugins] 表。
+    let plugins_table = root
+        .get("plugins")
+        .and_then(|value| value.as_table())
+        .ok_or_else(|| diagnostics.to_string())?;
+    // plugins 存储从本地配置/cache 构造出的插件列表。
+    let mut plugins = Vec::<ToolPluginInfo>::new();
+
+    for (id, value) in plugins_table {
+        // marketplace 存储插件所属 marketplace。
+        let marketplace = plugin_marketplace(id);
+        // name 存储插件短名称。
+        let name = plugin_short_name(id);
+        // enabled 标记插件当前是否启用。
+        let enabled = value
+            .as_table()
+            .map(|table| toml_bool(table, "enabled"))
+            .unwrap_or(false);
+        // install_path 存储本地 cache 中最新版本目录。
+        let install_path = latest_codex_plugin_install_path(codex_home, &marketplace, &name);
+        // manifest 存储插件本地 manifest 内容。
+        let manifest = install_path
+            .as_ref()
+            .and_then(|path| read_codex_plugin_manifest(path));
+        // current_version 存储插件当前安装版本。
+        let current_version = manifest
+            .as_ref()
+            .map(|item| json_string(item, "version"))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| {
+                install_path
+                    .as_ref()
+                    .and_then(|path| path.file_name())
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("")
+                    .to_string()
+            });
+        // display_name 存储 manifest 中的插件名，缺失时回退到 ID 短名。
+        let display_name = manifest
+            .as_ref()
+            .map(|item| json_string(item, "name"))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| name.clone());
+
+        plugins.push(ToolPluginInfo {
+            id: id.clone(),
+            name: display_name,
+            marketplace,
+            current_version,
+            available_version: String::new(),
+            scope: String::new(),
+            enabled,
+            install_path: install_path
+                .map(|path| path.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            last_updated: String::new(),
+            update_status: "unknown".to_string(),
+        });
+    }
+
+    plugins.sort_by(|left, right| left.id.to_lowercase().cmp(&right.id.to_lowercase()));
+
+    Ok(PluginUpdateCheckResult {
+        tool: "codex".to_string(),
+        plugins,
+        raw_output: String::new(),
+        diagnostics: diagnostics.to_string(),
+    })
 }
 
 // 解析命令输出中的 JSON 根对象。
@@ -363,17 +665,26 @@ fn run_plugin_cli_raw(
     if output.status.success() {
         Ok(PluginCliOutput { stdout, stderr })
     } else {
-        Err(format!("执行命令失败:\n{}", merged_output).trim().to_string())
+        Err(format!("执行命令失败:\n{}", merged_output)
+            .trim()
+            .to_string())
     }
 }
 
 // 执行插件相关 CLI 命令并返回合并后的可读输出。
 // bin 为命令名；args 为命令参数；home_env_key 为工具根目录环境变量名；home_dir 为工具根目录。
-fn run_plugin_cli(bin: &str, args: &[&str], home_env_key: &str, home_dir: &str) -> Result<String, String> {
+fn run_plugin_cli(
+    bin: &str,
+    args: &[&str],
+    home_env_key: &str,
+    home_dir: &str,
+) -> Result<String, String> {
     // output 存储拆分后的 CLI 输出，供更新命令复用原有“stdout+stderr 合并返回”行为。
     let output = run_plugin_cli_raw(bin, args, home_env_key, home_dir)?;
     // merged_output 存储合并后的可读结果，供错误回显与前端展示复用。
-    let merged_output = format!("{}\n{}", output.stdout, output.stderr).trim().to_string();
+    let merged_output = format!("{}\n{}", output.stdout, output.stderr)
+        .trim()
+        .to_string();
     Ok(merged_output)
 }
 
@@ -395,13 +706,19 @@ pub fn check_claude_plugin_updates(claude_home: String) -> Result<PluginUpdateCh
 // codex_home 为 Codex 配置根目录，用于让 CLI 指向用户当前选择的 Codex 环境。
 #[tauri::command]
 pub fn check_codex_plugin_updates(codex_home: String) -> Result<PluginUpdateCheckResult, String> {
+    // expanded_home 存储展开后的 Codex home，CLI 失败时用于本地 fallback。
+    let expanded_home = expand_home(&codex_home);
     // output 存储 codex plugin list --available --json 的原始 stdout/stderr。
     let output = run_plugin_cli_raw(
         "codex",
         &["plugin", "list", "--available", "--json"],
         "CODEX_HOME",
         &codex_home,
-    )?;
+    );
+    let output = match output {
+        Ok(output) => output,
+        Err(error) => return build_codex_fallback_result(&expanded_home, &error),
+    };
     parse_codex_plugin_update_check_output(&output.stdout, &output.stderr)
 }
 
@@ -409,7 +726,9 @@ pub fn check_codex_plugin_updates(codex_home: String) -> Result<PluginUpdateChec
 #[tauri::command]
 pub fn list_claude_plugins(claude_home: String) -> Result<Vec<PluginInfo>, String> {
     // path 为 installed_plugins.json 绝对路径
-    let path = expand_home(&claude_home).join("plugins").join("installed_plugins.json");
+    let path = expand_home(&claude_home)
+        .join("plugins")
+        .join("installed_plugins.json");
     if !path.exists() {
         return Ok(vec![]);
     }
@@ -424,23 +743,43 @@ pub fn list_claude_plugins(claude_home: String) -> Result<Vec<PluginInfo>, Strin
     if let Some(plugins) = root.get("plugins").and_then(|p| p.as_object()) {
         for (full_name, installs) in plugins {
             // marketplace 从 "name@market" 中截取 @ 之后部分
-            let marketplace = full_name
-                .split('@')
-                .nth(1)
-                .unwrap_or("")
-                .to_string();
+            let marketplace = full_name.split('@').nth(1).unwrap_or("").to_string();
             // 每个插件可能有多条安装记录（不同 scope），逐条展开
             if let Some(arr) = installs.as_array() {
                 for inst in arr {
                     result.push(PluginInfo {
                         name: full_name.clone(),
                         marketplace: marketplace.clone(),
-                        version: inst.get("version").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        scope: inst.get("scope").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        install_path: inst.get("installPath").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        installed_at: inst.get("installedAt").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        last_updated: inst.get("lastUpdated").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        git_commit_sha: inst.get("gitCommitSha").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        version: inst
+                            .get("version")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        scope: inst
+                            .get("scope")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        install_path: inst
+                            .get("installPath")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        installed_at: inst
+                            .get("installedAt")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        last_updated: inst
+                            .get("lastUpdated")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        git_commit_sha: inst
+                            .get("gitCommitSha")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
                     });
                 }
             }
@@ -455,7 +794,9 @@ pub fn list_claude_plugins(claude_home: String) -> Result<Vec<PluginInfo>, Strin
 #[tauri::command]
 pub fn list_claude_marketplaces(claude_home: String) -> Result<Vec<MarketplaceInfo>, String> {
     // path 为 known_marketplaces.json 绝对路径
-    let path = expand_home(&claude_home).join("plugins").join("known_marketplaces.json");
+    let path = expand_home(&claude_home)
+        .join("plugins")
+        .join("known_marketplaces.json");
     if !path.exists() {
         return Ok(vec![]);
     }
@@ -482,8 +823,16 @@ pub fn list_claude_marketplaces(claude_home: String) -> Result<Vec<MarketplaceIn
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string(),
-                install_location: val.get("installLocation").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                last_updated: val.get("lastUpdated").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                install_location: val
+                    .get("installLocation")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                last_updated: val
+                    .get("lastUpdated")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
             });
         }
     }
@@ -515,7 +864,9 @@ pub fn update_claude_plugin(plugin_name: String, scope: String) -> Result<String
     if output.status.success() {
         Ok(format!("{}\n{}", stdout, stderr).trim().to_string())
     } else {
-        Err(format!("更新失败:\n{}\n{}", stdout, stderr).trim().to_string())
+        Err(format!("更新失败:\n{}\n{}", stdout, stderr)
+            .trim()
+            .to_string())
     }
 }
 
@@ -532,7 +883,9 @@ pub fn update_claude_marketplace(marketplace_name: String) -> Result<String, Str
     if output.status.success() {
         Ok(format!("{}\n{}", stdout, stderr).trim().to_string())
     } else {
-        Err(format!("更新失败:\n{}\n{}", stdout, stderr).trim().to_string())
+        Err(format!("更新失败:\n{}\n{}", stdout, stderr)
+            .trim()
+            .to_string())
     }
 }
 
@@ -576,6 +929,7 @@ pub fn update_codex_marketplace(marketplace_name: String) -> Result<String, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     // 验证 Claude plugin list --json --available 输出能解析为统一更新信息
     #[test]
@@ -709,5 +1063,70 @@ mod tests {
             .expect("stderr warning 不应污染 Codex 更新检查 JSON 解析");
         assert_eq!(result.raw_output, stdout);
         assert_eq!(result.plugins[0].update_status, "newer");
+    }
+
+    // 验证 Codex CLI 因 marketplace 快照损坏失败时，后端仍能从本地配置/cache 回退展示已安装插件。
+    #[test]
+    fn test_build_codex_fallback_result_reads_config_and_cache() {
+        // dir 存储隔离的临时 Codex home。
+        let dir = std::env::temp_dir().join(format!("vac_codex_fallback_{}", std::process::id()));
+        // codex_home 存储临时 Codex home 的字符串形式。
+        let codex_home = dir.to_string_lossy().to_string();
+        // plugin_dir 存储模拟的插件安装目录。
+        let plugin_dir = dir
+            .join("plugins")
+            .join("cache")
+            .join("superpowers-dev")
+            .join("superpowers")
+            .join("6.0.3")
+            .join(".codex-plugin");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        std::fs::write(
+            plugin_dir.join("plugin.json"),
+            r#"{
+              "name": "superpowers",
+              "version": "6.0.3",
+              "interface": { "displayName": "Superpowers" }
+            }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("config.toml"),
+            r#"
+              [marketplaces.superpowers-dev]
+              source_type = "local"
+              source = "/missing/superpowers"
+
+              [plugins."superpowers@superpowers-dev"]
+              enabled = true
+            "#,
+        )
+        .unwrap();
+
+        // result 存储从本地配置/cache 构造出的 Codex fallback 结果。
+        let result = build_codex_fallback_result(
+            Path::new(&codex_home),
+            "执行命令失败:\nmarketplace root does not contain a supported manifest",
+        )
+        .expect("fallback 应能读取本地 Codex 插件 cache");
+
+        assert_eq!(result.tool, "codex");
+        assert_eq!(result.plugins.len(), 1);
+        assert_eq!(result.plugins[0].id, "superpowers@superpowers-dev");
+        assert_eq!(result.plugins[0].current_version, "6.0.3");
+        assert_eq!(result.plugins[0].available_version, "");
+        assert_eq!(result.plugins[0].update_status, "unknown");
+        assert!(result
+            .diagnostics
+            .contains("marketplace root does not contain a supported manifest"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // 验证后端插件版本比较会把同号预发布升级正式版识别为可更新，保持与前端提示一致。
+    #[test]
+    fn test_compare_versions_treats_prerelease_as_older_than_stable() {
+        assert_eq!(compare_versions("1.0.0-beta.1", "1.0.0"), "newer");
+        assert_eq!(compare_versions("1.0.0", "1.0.0-beta.1"), "different");
     }
 }

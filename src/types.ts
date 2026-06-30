@@ -82,3 +82,26 @@ export interface ToolStatus {
   version: string; // 版本文本
   path: string; // 可执行路径
 }
+
+// 工具最新版本查询结果，对应 Rust ToolLatestVersion
+export interface ToolLatestVersion {
+  tool_id: string; // 工具标识
+  package_name: string; // 查询所用 npm 包名
+  latest_version: string; // npm registry 返回的最新版本
+}
+
+// 单个 Skill 信息，对应 Rust SkillInfo
+export interface SkillInfo {
+  name: string; // Skill 名称，来自 SKILL.md front matter 或目录名
+  description: string; // Skill 用途说明，来自 SKILL.md description
+  source: string; // 来源展示名，如 Codex 系统 / Codex 插件 / Agents
+  tool: "claude" | "codex" | "agents"; // Skill 所属工具域
+  plugin: string; // 插件归属，非插件 Skill 为空字符串
+  path: string; // SKILL.md 绝对路径
+}
+
+// Skill 列表查询结果，对应 Rust SkillListResult
+export interface SkillListResult {
+  skills: SkillInfo[]; // 扫描到的可用 Skill 列表
+  diagnostics: string; // 扫描诊断信息，如缺失目录或读取失败
+}

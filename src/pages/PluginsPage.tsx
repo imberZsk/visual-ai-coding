@@ -1,13 +1,6 @@
 // 插件管理页：展示 Claude 与 Codex 插件版本状态，支持检查和拉取更新
-import { useEffect, useState } from "react";
-import {
-  checkClaudePluginUpdates,
-  checkCodexPluginUpdates,
-  revealInFinder,
-  updateClaudePlugin,
-  updateCodexMarketplace,
-  updateCodexPlugin,
-} from "../api";
+import { useEffect } from "react";
+import { revealInFinder } from "../api";
 import { PageHeader, Card, Badge, Button, EmptyState } from "../components/ui";
 import { useAppStore } from "../store";
 import type {
@@ -15,13 +8,6 @@ import type {
   PluginUpdateStatus,
   ToolPluginInfo,
 } from "../types";
-
-// UpdateState 描述单条插件更新操作的执行阶段与反馈文本。
-interface UpdateState {
-  target: string; // target 存储当前更新中的插件名称或最近更新完成的插件名称。
-  phase: "loading" | "ok" | "err"; // phase 存储更新阶段，控制提示条颜色与文案。
-  text: string; // text 存储 CLI 输出或错误信息。
-}
 
 // ToolSectionState 描述单个工具区块的检查结果。
 interface ToolSectionState {
@@ -36,7 +22,11 @@ interface PluginToolSectionProps {
   state: ToolSectionState; // state 存储工具区块的加载、结果与错误状态。
   onRefresh: () => void; // onRefresh 用于重新检查当前工具插件状态。
   onUpdate: (plugin: ToolPluginInfo) => void; // onUpdate 用于触发单个插件更新。
+  isPluginUpdating: (plugin: ToolPluginInfo) => boolean; // isPluginUpdating 判断指定插件按钮是否进入 loading。
 }
+
+// INITIAL_PLUGIN_CHECK_DELAY_MS 存储插件页首次检查延迟时间，用于先让 tab 切换动画完成再启动 CLI 检查。
+const INITIAL_PLUGIN_CHECK_DELAY_MS = 220;
 
 // 根据插件更新状态返回界面文案。
 // status 为后端计算出的更新状态。
@@ -70,6 +60,12 @@ function updateStatusTone(
   return "neutral";
 }
 
+// pluginUpdateKey 生成单插件更新任务 key，用工具和安装信息区分同名插件。
+// tool 为插件所属工具，plugin 为后端返回的插件信息。
+function pluginUpdateKey(tool: "claude" | "codex", plugin: ToolPluginInfo): string {
+  return [tool, plugin.id, plugin.scope, plugin.install_path].join("::");
+}
+
 // 渲染单个工具的插件更新区块。
 // title 为区块标题，state 为该工具的检查结果，onRefresh / onUpdate 为交互回调。
 function PluginToolSection({
@@ -77,13 +73,14 @@ function PluginToolSection({
   state,
   onRefresh,
   onUpdate,
+  isPluginUpdating,
 }: PluginToolSectionProps) {
   return (
     <section className="mb-6">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-medium text-text-main">{title}</h2>
-        <Button onClick={onRefresh} variant="default" disabled={state.loading}>
-          {state.loading ? "检查中…" : "检查更新"}
+        <Button onClick={onRefresh} variant="default" loading={state.loading}>
+          检查更新
         </Button>
       </div>
 
@@ -96,8 +93,17 @@ function PluginToolSection({
         </div>
       )}
 
-      {state.loading ? (
-        <div className="py-8 text-center text-sm text-text-muted">加载中…</div>
+      {state.result?.diagnostics && !state.error && state.result.plugins.length === 0 && (
+        <div className="mb-3 rounded-lg border border-amber-500/40 p-3 text-xs text-amber-500">
+          <div className="font-medium">{title}诊断</div>
+          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
+            {state.result.diagnostics}
+          </pre>
+        </div>
+      )}
+
+      {state.error ? (
+        <div className="py-6 text-sm text-text-muted">该工具插件检查失败，请查看上方错误信息。</div>
       ) : !state.result || state.result.plugins.length === 0 ? (
         <EmptyState text="未发现已安装插件" />
       ) : (
@@ -142,6 +148,7 @@ function PluginToolSection({
                     onClick={() => onUpdate(plugin)}
                     variant="primary"
                     disabled={plugin.update_status === "same"}
+                    loading={isPluginUpdating(plugin)}
                   >
                     拉取更新
                   </Button>
@@ -161,95 +168,25 @@ export default function PluginsPage() {
   const claudeHome = useAppStore((state) => state.prefs?.claude_home || "");
   // codexHome 存储 Codex 配置根目录。
   const codexHome = useAppStore((state) => state.prefs?.codex_home || "");
-  // claudeState 存储 Claude 插件区块的检查状态。
-  const [claudeState, setClaudeState] = useState<ToolSectionState>({
-    loading: true,
-    result: null,
-    error: "",
-  });
-  // codexState 存储 Codex 插件区块的检查状态。
-  const [codexState, setCodexState] = useState<ToolSectionState>({
-    loading: true,
-    result: null,
-    error: "",
-  });
-  // update 存储当前插件更新操作的反馈信息。
-  const [update, setUpdate] = useState<UpdateState | null>(null);
-
-  // loadClaude 检查 Claude 插件更新状态。
-  async function loadClaude() {
-    if (!claudeHome) {
-      setClaudeState({ loading: false, result: null, error: "" });
-      return;
-    }
-    setClaudeState((state) => ({ ...state, loading: true, error: "" }));
-    try {
-      // result 存储 Claude 插件检查结果。
-      const result = await checkClaudePluginUpdates(claudeHome);
-      setClaudeState({ loading: false, result, error: "" });
-    } catch (error) {
-      setClaudeState({ loading: false, result: null, error: String(error) });
-    }
-  }
-
-  // loadCodex 检查 Codex 插件更新状态。
-  async function loadCodex() {
-    if (!codexHome) {
-      setCodexState({ loading: false, result: null, error: "" });
-      return;
-    }
-    setCodexState((state) => ({ ...state, loading: true, error: "" }));
-    try {
-      // result 存储 Codex 插件检查结果。
-      const result = await checkCodexPluginUpdates(codexHome);
-      setCodexState({ loading: false, result, error: "" });
-    } catch (error) {
-      setCodexState({ loading: false, result: null, error: String(error) });
-    }
-  }
-
-  // loadAll 并行检查两个工具的插件状态。
-  async function loadAll() {
-    await Promise.allSettled([loadClaude(), loadCodex()]);
-  }
+  // pluginPage 存储插件页跨 tab 保留的检查与更新状态。
+  const pluginPage = useAppStore((state) => state.pluginPage);
+  // checkPluginUpdates 存储检查指定工具插件更新的 store action。
+  const checkPluginUpdates = useAppStore((state) => state.checkPluginUpdates);
+  // checkAllPluginUpdates 存储并行检查全部工具插件更新的 store action。
+  const checkAllPluginUpdates = useAppStore((state) => state.checkAllPluginUpdates);
+  // updatePlugin 存储更新指定工具插件的 store action。
+  const updatePlugin = useAppStore((state) => state.updatePlugin);
 
   useEffect(() => {
-    void loadAll();
-  }, [claudeHome, codexHome]);
+    // timer 存储首轮插件检查的延迟句柄，避免切到插件 tab 时同步启动 CLI 检查造成卡顿。
+    const timer = window.setTimeout(() => {
+      void checkAllPluginUpdates();
+    }, INITIAL_PLUGIN_CHECK_DELAY_MS);
 
-  // handleUpdateClaude 更新 Claude 插件。
-  // plugin 为需要执行更新的插件信息。
-  async function handleUpdateClaude(plugin: ToolPluginInfo) {
-    setUpdate({ target: plugin.id, phase: "loading", text: "" });
-    try {
-      // output 存储 Claude CLI 返回的更新输出。
-      const output = await updateClaudePlugin(plugin.id, plugin.scope);
-      setUpdate({ target: plugin.id, phase: "ok", text: output || "更新完成" });
-      await loadClaude();
-    } catch (error) {
-      setUpdate({ target: plugin.id, phase: "err", text: String(error) });
-    }
-  }
-
-  // handleUpdateCodex 更新 Codex 插件。
-  // plugin 为需要执行更新的插件信息。
-  async function handleUpdateCodex(plugin: ToolPluginInfo) {
-    setUpdate({ target: plugin.id, phase: "loading", text: "" });
-    try {
-      // Codex 插件更新依赖 marketplace 先刷新，否则本地索引可能仍指向旧版本。
-      const marketplaceOutput = await updateCodexMarketplace(plugin.marketplace);
-      // pluginOutput 存储 Codex CLI 返回的插件更新输出。
-      const pluginOutput = await updateCodexPlugin(plugin.id, plugin.marketplace);
-      setUpdate({
-        target: plugin.id,
-        phase: "ok",
-        text: [marketplaceOutput, pluginOutput].filter(Boolean).join("\n"),
-      });
-      await loadCodex();
-    } catch (error) {
-      setUpdate({ target: plugin.id, phase: "err", text: String(error) });
-    }
-  }
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [checkAllPluginUpdates, claudeHome, codexHome]);
 
   return (
     <div className="p-6">
@@ -257,30 +194,38 @@ export default function PluginsPage() {
         title="插件"
         subtitle="管理 Claude Code 与 Codex 插件，检查可用版本并拉取更新"
         actions={
-          <Button onClick={loadAll} variant="default">
+          <Button
+            onClick={() => {
+              void checkAllPluginUpdates();
+            }}
+            variant="default"
+            loading={pluginPage.refreshingAll}
+          >
             刷新全部
           </Button>
         }
       />
 
-      {update && (
+      {pluginPage.update && (
         <div
           className={`mb-4 rounded-lg border p-3 text-xs ${
-            update.phase === "err"
+            pluginPage.update.phase === "err"
               ? "border-red-500/40 text-red-500"
-              : update.phase === "ok"
+              : pluginPage.update.phase === "ok"
               ? "border-green-500/40 text-green-500"
               : "border-border text-text-muted"
           }`}
         >
           <div className="font-medium">
-            {update.phase === "loading"
-              ? `正在更新 ${update.target}…`
-              : `${update.target} 更新${update.phase === "ok" ? "成功" : "失败"}`}
+            {pluginPage.update.phase === "loading"
+              ? `正在更新 ${pluginPage.update.target}…`
+              : `${pluginPage.update.target} 更新${
+                  pluginPage.update.phase === "ok" ? "成功" : "失败"
+                }`}
           </div>
-          {update.text && (
+          {pluginPage.update.text && (
             <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
-              {update.text}
+              {pluginPage.update.text}
             </pre>
           )}
         </div>
@@ -288,22 +233,28 @@ export default function PluginsPage() {
 
       <PluginToolSection
         title="Claude 插件"
-        state={claudeState}
+        state={pluginPage.claude}
         onRefresh={() => {
-          void loadClaude();
+          void checkPluginUpdates("claude");
         }}
         onUpdate={(plugin) => {
-          void handleUpdateClaude(plugin);
+          void updatePlugin("claude", plugin);
+        }}
+        isPluginUpdating={(plugin) => {
+          return Boolean(pluginPage.updating[pluginUpdateKey("claude", plugin)]);
         }}
       />
       <PluginToolSection
         title="Codex 插件"
-        state={codexState}
+        state={pluginPage.codex}
         onRefresh={() => {
-          void loadCodex();
+          void checkPluginUpdates("codex");
         }}
         onUpdate={(plugin) => {
-          void handleUpdateCodex(plugin);
+          void updatePlugin("codex", plugin);
+        }}
+        isPluginUpdating={(plugin) => {
+          return Boolean(pluginPage.updating[pluginUpdateKey("codex", plugin)]);
         }}
       />
     </div>

@@ -7,6 +7,8 @@ import type {
   PluginInfo,
   MarketplaceInfo,
   PluginUpdateCheckResult,
+  SkillListResult,
+  ToolLatestVersion,
   ToolStatus,
 } from "./types";
 
@@ -110,6 +112,20 @@ export function detectTools(): Promise<ToolStatus[]> {
   return invoke("detect_tools");
 }
 
+// 查询指定工具在 npm registry 上的最新版本
+// toolId 为工具标识，如 claude / codex。
+export function checkToolLatestVersion(
+  toolId: string
+): Promise<ToolLatestVersion> {
+  return invoke("check_tool_latest_version", { toolId });
+}
+
+// 更新指定工具 CLI 到 npm registry 最新版本
+// toolId 为工具标识，如 claude / codex。
+export function updateToolCli(toolId: string): Promise<string> {
+  return invoke("update_tool_cli", { toolId });
+}
+
 // 在 VSCode 打开文件/目录
 export function openInVscode(
   vscodePath: string,
@@ -121,4 +137,13 @@ export function openInVscode(
 // 在 Finder 中显示路径
 export function revealInFinder(target: string): Promise<void> {
   return invoke("reveal_in_finder", { target });
+}
+
+// 扫描 Claude / Codex / Agents 可用 Skill 列表
+// claudeHome 与 codexHome 分别为对应工具的配置根目录。
+export function listSkills(
+  claudeHome: string,
+  codexHome: string
+): Promise<SkillListResult> {
+  return invoke("list_skills", { claudeHome, codexHome });
 }

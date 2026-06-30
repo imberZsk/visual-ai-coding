@@ -1,6 +1,18 @@
 // 共享 UI 原语：统一卡片、区块标题、按钮、徽章、提示等基础组件，保证全应用风格一致
 import type { ReactNode } from "react";
 
+// LoadingIcon 渲染与 visual-worktree Spin 类似的旋转加载图标。
+// className 为调用方传入的额外尺寸或颜色样式。
+export function LoadingIcon({ className = "" }: { className?: string }) {
+  return (
+    <span
+      data-testid="loading-icon"
+      aria-hidden="true"
+      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent ${className}`}
+    />
+  );
+}
+
 // 卡片容器：面板背景 + 边框 + 圆角，承载分组内容
 export function Card({
   children,
@@ -57,6 +69,7 @@ export function Button({
   onClick,
   variant = "default",
   disabled = false,
+  loading = false,
   className = "",
   title,
 }: {
@@ -64,6 +77,7 @@ export function Button({
   onClick?: () => void; // 点击回调
   variant?: ButtonVariant; // 视觉变体
   disabled?: boolean; // 是否禁用
+  loading?: boolean; // 是否展示图标式加载状态
   className?: string; // 额外样式
   title?: string; // 悬浮提示
 }) {
@@ -80,10 +94,12 @@ export function Button({
   return (
     <button
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || loading}
+      aria-busy={loading}
       title={title}
       className={`${base} ${variantClass} ${className}`}
     >
+      {loading && <LoadingIcon />}
       {children}
     </button>
   );

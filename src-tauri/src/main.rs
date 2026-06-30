@@ -14,8 +14,12 @@ use commands::plugins::{
     list_claude_plugins, update_claude_marketplace, update_claude_plugin, update_codex_marketplace,
     update_codex_plugin,
 };
+// Skill 扫描命令
+use commands::skills::list_skills;
 // 系统集成命令
-use commands::system::{detect_tools, open_in_vscode, reveal_in_finder};
+use commands::system::{
+    check_tool_latest_version, detect_tools, open_in_vscode, reveal_in_finder, update_tool_cli,
+};
 
 // 应用入口：初始化 Tauri 并注册所有前端可调用命令
 fn main() {
@@ -35,6 +39,9 @@ fn main() {
             update_claude_marketplace,
             update_codex_plugin,
             update_codex_marketplace,
+            list_skills,
+            check_tool_latest_version,
+            update_tool_cli,
             detect_tools,
             open_in_vscode,
             reveal_in_finder

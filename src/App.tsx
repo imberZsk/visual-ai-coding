@@ -1,4 +1,4 @@
-// 应用根组件：负责初始化全局状态、应用主题、渲染侧边导航与当前页面
+// 应用根组件：负责初始化全局状态、应用主题、渲染顶部导航与当前页面
 import { useEffect } from "react";
 import { useAppStore } from "./store";
 import { useTheme } from "./hooks/useTheme";
@@ -7,7 +7,9 @@ import Dashboard from "./pages/Dashboard";
 import ClaudePage from "./pages/ClaudePage";
 import CodexPage from "./pages/CodexPage";
 import PluginsPage from "./pages/PluginsPage";
+import SkillsPage from "./pages/SkillsPage";
 import SettingsPage from "./pages/SettingsPage";
+import { LoadingIcon } from "./components/ui";
 
 // 根据当前激活页签渲染对应页面组件
 function renderPage(tab: string) {
@@ -24,6 +26,9 @@ function renderPage(tab: string) {
     // 插件管理页
     case "plugins":
       return <PluginsPage />;
+    // Skill 清单页
+    case "skills":
+      return <SkillsPage />;
     // 应用设置页
     case "settings":
       return <SettingsPage />;
@@ -53,19 +58,22 @@ export default function App() {
   // 偏好加载完成前显示占位，避免主题闪烁与空数据渲染
   if (!loaded) {
     return (
-      <div className="flex h-full items-center justify-center text-text-muted">
-        加载中…
+      <div className="flex h-full items-center justify-center gap-2 text-text-muted">
+        <LoadingIcon className="text-accent" />
+        <span>加载中…</span>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
-      {/* 左侧导航栏 */}
+    <div className="flex h-full w-full flex-col overflow-hidden bg-surface">
+      {/* 顶部导航栏 */}
       <Sidebar />
-      {/* 右侧内容区：可滚动 */}
-      <main className="flex-1 overflow-y-auto bg-surface">
-        {renderPage(activeTab)}
+      {/* 下方内容区：可滚动 */}
+      <main className="relative flex-1 overflow-y-auto bg-surface">
+        <div key={activeTab} data-testid="tab-content" className="tab-content-enter">
+          {renderPage(activeTab)}
+        </div>
       </main>
     </div>
   );

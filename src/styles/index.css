@@ -4,22 +4,24 @@
 
 /* 主题语义色变量：light 为默认，.dark 覆盖为暗色 */
 :root {
-  --surface: 247 248 250; /* 应用主背景 */
+  --surface: 255 255 255; /* 应用主背景，参考 visual-worktree 亮色背景 */
+  --sidebar: 245 245 245; /* 侧边栏背景，略暗于主背景以降低亮度 */
   --panel: 255 255 255; /* 卡片/面板背景 */
-  --border: 226 229 234; /* 边框线 */
-  --accent: 79 110 247; /* 强调色（按钮/选中） */
-  --text-main: 24 27 34; /* 主文本 */
-  --text-muted: 110 119 134; /* 次要文本 */
+  --border: 217 217 217; /* 边框线，贴近 Ant Design 默认线色 */
+  --accent: 22 119 255; /* 强调色（参考 visual-worktree / Ant Design 主蓝） */
+  --text-main: 0 0 0; /* 主文本，结合透明度工具类接近 Ant Design 亮色文字 */
+  --text-muted: 0 0 0; /* 次要文本，结合透明度工具类接近 Ant Design 亮色弱文本 */
 }
 
 /* 暗色主题：通过 html.dark 类切换 */
 .dark {
-  --surface: 17 19 24;
-  --panel: 27 30 38;
-  --border: 44 49 60;
-  --accent: 110 138 255;
-  --text-main: 233 236 242;
-  --text-muted: 148 156 170;
+  --surface: 20 20 20;
+  --sidebar: 24 24 24;
+  --panel: 31 31 31;
+  --border: 66 66 66;
+  --accent: 22 119 255;
+  --text-main: 255 255 255;
+  --text-muted: 255 255 255;
 }
 
 /* 全局基础样式：填满视口、统一字体与文本色 */
@@ -49,4 +51,21 @@ body {
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* 顶部 tab 切换时，下方内容做轻微纵向位移 + 淡入，避免横向溢出触发滚动条 */
+.tab-content-enter {
+  animation: tabContentEnter 0.18s ease-out;
+  overflow-x: clip;
+}
+
+@keyframes tabContentEnter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
