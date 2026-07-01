@@ -9,12 +9,14 @@ import type {
 import {
   checkClaudePluginUpdates,
   checkCodexPluginUpdates,
+  checkToolLatestVersion,
   getPreferences,
   savePreferences as apiSavePreferences,
   detectTools,
   updateClaudePlugin,
   updateCodexMarketplace,
   updateCodexPlugin,
+  updateToolCli,
 } from "./api";
 
 // PluginToolId 表示插件页支持检查更新的工具标识。
@@ -48,6 +50,15 @@ interface PluginPageState {
   update: PluginUpdateFeedback | null; // update 存储当前插件更新操作的反馈信息。
   checking: Partial<Record<PluginToolId, Promise<void>>>; // checking 存储各工具正在执行的检查 Promise。
   updating: Record<string, PluginUpdateOperation>; // updating 存储各插件正在执行的更新 Promise。
+}
+
+// ToolVersionCheckState 存储单个工具最新版本查询和更新状态。
+interface ToolVersionCheckState {
+  loading: boolean; // loading 表示该工具是否正在查询最新版本。
+  updating: boolean; // updating 表示该工具是否正在执行 CLI 更新。
+  latestVersion: string; // latestVersion 存储 npm registry 返回的最新版本号。
+  error: string; // error 存储最新版本查询或更新失败时的错误信息。
+  updateMessage: string; // updateMessage 存储 CLI 更新完成后的结果提示。
 }
 
 // createEmptyPluginToolCheckState 创建单个工具的空检查状态。
@@ -85,6 +96,29 @@ function cleanUpdatingMap(
   return nextUpdating;
 }
 
+// createIdleToolVersionCheck 创建空闲态工具版本状态，用于初始化或重置错误信息。
+function createIdleToolVersionCheck(): ToolVersionCheckState {
+  return {
+    loading: false,
+    updating: false,
+    latestVersion: "",
+    error: "",
+    updateMessage: "",
+  };
+}
+
+// withoutPromiseKey 返回移除指定 key 后的新 Promise 映射。
+// map 存储当前任务 Promise 映射，key 为需要清理的工具标识。
+function withoutPromiseKey(
+  map: Record<string, Promise<void> | undefined>,
+  key: string
+): Record<string, Promise<void> | undefined> {
+  // nextMap 存储拷贝后的 Promise 映射，避免直接修改 zustand 当前状态。
+  const nextMap = { ...map };
+  delete nextMap[key];
+  return nextMap;
+}
+
 // 全局状态结构
 interface AppState {
   // 应用偏好；null 表示尚未加载
@@ -94,6 +128,9 @@ interface AppState {
   // 偏好是否加载完成
   loaded: boolean;
   pluginPage: PluginPageState; // pluginPage 存储插件页跨 tab 保留的检查与更新状态。
+  toolVersionChecks: Record<string, ToolVersionCheckState>; // toolVersionChecks 存储概览页每个工具的最新版本查询状态。
+  toolVersionChecking: Record<string, Promise<void> | undefined>; // toolVersionChecking 存储正在查询最新版本的任务 Promise。
+  toolVersionUpdating: Record<string, Promise<void> | undefined>; // toolVersionUpdating 存储正在更新 CLI 的任务 Promise。
   // 加载偏好与工具状态（应用启动时调用一次）
   init: () => Promise<void>;
   // 更新部分偏好字段并持久化
@@ -106,6 +143,10 @@ interface AppState {
   checkAllPluginUpdates: () => Promise<void>;
   // 更新指定工具下的单个插件
   updatePlugin: (tool: PluginToolId, plugin: ToolPluginInfo) => Promise<void>;
+  // 查询指定工具的 npm 最新版本
+  checkLatestToolVersion: (toolId: string) => Promise<void>;
+  // 更新指定工具 CLI 到最新版
+  updateToolToLatest: (toolId: string) => Promise<void>;
 }
 
 // 创建全局 store
@@ -114,6 +155,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   tools: [],
   loaded: false,
   pluginPage: createInitialPluginPageState(),
+  toolVersionChecks: {},
+  toolVersionChecking: {},
+  toolVersionUpdating: {},
 
   // 初始化：并行加载偏好与工具探测
   init: async () => {
@@ -315,6 +359,143 @@ export const useAppStore = create<AppState>((set, get) => ({
           ...state.pluginPage.updating,
           [key]: { loading: true, promise },
         },
+      },
+    }));
+
+    return promise;
+  },
+
+  // 查询指定工具的 npm 最新版本；已有同工具查询时复用 Promise，保证切 tab 后进度不丢。
+  checkLatestToolVersion: (toolId) => {
+    // existingPromise 存储当前工具已在执行的版本查询 Promise。
+    const existingPromise = get().toolVersionChecking[toolId];
+    if (existingPromise) {
+      // 同一工具已有查询在执行时直接复用，避免重复请求 npm registry。
+      return existingPromise;
+    }
+
+    set((state) => ({
+      toolVersionChecks: {
+        ...state.toolVersionChecks,
+        [toolId]: {
+          ...(state.toolVersionChecks[toolId] ?? createIdleToolVersionCheck()),
+          loading: true,
+          error: "",
+          updateMessage: "",
+        },
+      },
+    }));
+
+    // promise 存储本次查询任务，写入 store 后可跨 Dashboard 卸载继续完成。
+    const promise = (async () => {
+      try {
+        // result 存储后端查询 npm registry 后返回的最新版本信息。
+        const result = await checkToolLatestVersion(toolId);
+        set((state) => ({
+          toolVersionChecks: {
+            ...state.toolVersionChecks,
+            [toolId]: {
+              ...(state.toolVersionChecks[toolId] ?? createIdleToolVersionCheck()),
+              loading: false,
+              latestVersion: result.latest_version,
+              error: "",
+              updateMessage: "",
+            },
+          },
+        }));
+      } catch (error) {
+        // message 存储错误对象转换后的可展示文案，避免 UI 直接渲染非字符串。
+        const message = error instanceof Error ? error.message : String(error);
+        set((state) => ({
+          toolVersionChecks: {
+            ...state.toolVersionChecks,
+            [toolId]: {
+              ...(state.toolVersionChecks[toolId] ?? createIdleToolVersionCheck()),
+              loading: false,
+              error: message,
+              updateMessage: "",
+            },
+          },
+        }));
+      } finally {
+        set((state) => ({
+          toolVersionChecking: withoutPromiseKey(state.toolVersionChecking, toolId),
+        }));
+      }
+    })();
+
+    set((state) => ({
+      toolVersionChecking: {
+        ...state.toolVersionChecking,
+        [toolId]: promise,
+      },
+    }));
+
+    return promise;
+  },
+
+  // 更新指定工具 CLI 到最新版；任务保存在 store 中，页面切走后仍继续执行并刷新工具状态。
+  updateToolToLatest: (toolId) => {
+    // existingPromise 存储当前工具已在执行的 CLI 更新 Promise。
+    const existingPromise = get().toolVersionUpdating[toolId];
+    if (existingPromise) {
+      // 同一工具已有更新在执行时直接复用，避免重复 npm install。
+      return existingPromise;
+    }
+
+    set((state) => ({
+      toolVersionChecks: {
+        ...state.toolVersionChecks,
+        [toolId]: {
+          ...(state.toolVersionChecks[toolId] ?? createIdleToolVersionCheck()),
+          updating: true,
+          error: "",
+          updateMessage: "",
+        },
+      },
+    }));
+
+    // promise 存储本次 CLI 更新任务，切换 tab 不会终止该任务。
+    const promise = (async () => {
+      try {
+        await updateToolCli(toolId);
+        await get().refreshTools();
+        set((state) => ({
+          toolVersionChecks: {
+            ...state.toolVersionChecks,
+            [toolId]: {
+              ...(state.toolVersionChecks[toolId] ?? createIdleToolVersionCheck()),
+              updating: false,
+              error: "",
+              updateMessage: "更新完成",
+            },
+          },
+        }));
+      } catch (error) {
+        // message 存储错误对象转换后的可展示文案，避免 UI 直接渲染非字符串。
+        const message = error instanceof Error ? error.message : String(error);
+        set((state) => ({
+          toolVersionChecks: {
+            ...state.toolVersionChecks,
+            [toolId]: {
+              ...(state.toolVersionChecks[toolId] ?? createIdleToolVersionCheck()),
+              updating: false,
+              error: message,
+              updateMessage: "",
+            },
+          },
+        }));
+      } finally {
+        set((state) => ({
+          toolVersionUpdating: withoutPromiseKey(state.toolVersionUpdating, toolId),
+        }));
+      }
+    })();
+
+    set((state) => ({
+      toolVersionUpdating: {
+        ...state.toolVersionUpdating,
+        [toolId]: promise,
       },
     }));
 

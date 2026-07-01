@@ -2,11 +2,8 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Dashboard from "./Dashboard";
+import { useAppStore } from "../store";
 
-// refreshToolsMock 存储重新探测工具状态的测试替身。
-const refreshToolsMock = vi.fn();
-// updatePrefsMock 存储切换配置页签的测试替身。
-const updatePrefsMock = vi.fn();
 // revealInFinderMock 存储 Finder 打开命令的测试替身。
 const revealInFinderMock = vi.fn();
 // openInVscodeMock 存储 VSCode 打开命令的测试替身。
@@ -15,6 +12,10 @@ const openInVscodeMock = vi.fn();
 const checkToolLatestVersionMock = vi.fn();
 // updateToolCliMock 存储更新工具 CLI 命令的测试替身。
 const updateToolCliMock = vi.fn();
+// detectToolsMock 存储重新探测工具状态命令的测试替身。
+const detectToolsMock = vi.fn();
+// savePreferencesMock 存储偏好保存命令的测试替身。
+const savePreferencesMock = vi.fn();
 
 // DeferredValue 描述测试中可手动结束的 Promise。
 interface DeferredValue<T> {
@@ -40,48 +41,74 @@ vi.mock("../api", () => ({
   openInVscode: (...args: unknown[]) => openInVscodeMock(...args),
   checkToolLatestVersion: (...args: unknown[]) => checkToolLatestVersionMock(...args),
   updateToolCli: (...args: unknown[]) => updateToolCliMock(...args),
+  detectTools: (...args: unknown[]) => detectToolsMock(...args),
+  savePreferences: (...args: unknown[]) => savePreferencesMock(...args),
 }));
 
-vi.mock("../store", () => ({
-  useAppStore: (selector: (state: unknown) => unknown) =>
-    selector({
-      tools: [
-        {
-          id: "claude",
-          name: "Claude Code",
-          installed: true,
-          version: "2.1.177",
-          path: "/opt/homebrew/bin/claude",
-        },
-      ],
-      prefs: {
-        claude_home: "/Users/test/.claude",
-        codex_home: "/Users/test/.codex",
-        vscode_path: "code",
+// resetDashboardStore 重置 Dashboard 测试所需的真实 zustand store。
+function resetDashboardStore() {
+  useAppStore.setState({
+    prefs: {
+      theme: "system",
+      vscode_path: "code",
+      claude_home: "/Users/test/.claude",
+      codex_home: "/Users/test/.codex",
+      last_active_tab: "dashboard",
+      hidden_visual_config_fields: {},
+    },
+    tools: [
+      {
+        id: "claude",
+        name: "Claude Code",
+        installed: true,
+        version: "2.1.177",
+        path: "/opt/homebrew/bin/claude",
       },
-      refreshTools: refreshToolsMock,
-      updatePrefs: updatePrefsMock,
-    }),
-}));
+    ],
+    loaded: true,
+    toolVersionChecks: {},
+    toolVersionChecking: {},
+    toolVersionUpdating: {},
+  });
+}
 
 describe("Dashboard", () => {
   beforeEach(() => {
-    refreshToolsMock.mockReset();
-    updatePrefsMock.mockReset();
     revealInFinderMock.mockReset();
     openInVscodeMock.mockReset();
     checkToolLatestVersionMock.mockReset();
     updateToolCliMock.mockReset();
+    detectToolsMock.mockReset();
+    savePreferencesMock.mockReset();
+    detectToolsMock.mockResolvedValue([
+      {
+        id: "claude",
+        name: "Claude Code",
+        installed: true,
+        version: "2.1.196",
+        path: "/opt/homebrew/bin/claude",
+      },
+    ]);
+    savePreferencesMock.mockResolvedValue(undefined);
+    resetDashboardStore();
   });
 
   // 验证重新探测执行期间，按钮会进入 loading 并禁用，防止重复触发探测。
   it("shows loading while refreshing tool detection", async () => {
     // user 存储用户交互模拟器，用于点击重新探测按钮。
     const user = userEvent.setup();
-    // refreshDeferred 存储重新探测动作的 Promise。
-    const refreshDeferred = createDeferred<void>();
+    // refreshDeferred 存储重新探测动作的 Promise，完成值模拟后端返回的工具列表。
+    const refreshDeferred = createDeferred<
+      Array<{
+        id: string;
+        name: string;
+        installed: boolean;
+        version: string;
+        path: string;
+      }>
+    >();
 
-    refreshToolsMock.mockReturnValue(refreshDeferred.promise);
+    detectToolsMock.mockReturnValue(refreshDeferred.promise);
 
     render(<Dashboard />);
 
@@ -92,7 +119,15 @@ describe("Dashboard", () => {
     expect(refreshingButton).toBeDisabled();
     expect(within(refreshingButton).getByTestId("loading-icon")).toBeInTheDocument();
 
-    refreshDeferred.resolve(undefined);
+    refreshDeferred.resolve([
+      {
+        id: "claude",
+        name: "Claude Code",
+        installed: true,
+        version: "2.1.196",
+        path: "/opt/homebrew/bin/claude",
+      },
+    ]);
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "重新探测" })).not.toBeDisabled();
@@ -145,7 +180,15 @@ describe("Dashboard", () => {
       latest_version: "2.1.196",
     });
     updateToolCliMock.mockReturnValue(updateDeferred.promise);
-    refreshToolsMock.mockResolvedValue(undefined);
+    detectToolsMock.mockResolvedValue([
+      {
+        id: "claude",
+        name: "Claude Code",
+        installed: true,
+        version: "2.1.196",
+        path: "/opt/homebrew/bin/claude",
+      },
+    ]);
 
     render(<Dashboard />);
 
@@ -165,7 +208,45 @@ describe("Dashboard", () => {
 
     expect(await screen.findByText("更新完成")).toBeInTheDocument();
     await waitFor(() => {
-      expect(refreshToolsMock).toHaveBeenCalled();
+      expect(detectToolsMock).toHaveBeenCalled();
     });
+  });
+
+  // 验证最新版本查询在 Dashboard 卸载后仍继续，重新挂载时保留按钮 loading 并展示完成结果。
+  it("preserves latest-version check progress across unmount and remount", async () => {
+    // user 存储用户交互模拟器，用于点击版本查询按钮。
+    const user = userEvent.setup();
+    // versionDeferred 存储查询最新版本动作的 Promise，用于模拟切 tab 时仍在执行。
+    const versionDeferred = createDeferred<{
+      tool_id: string;
+      package_name: string;
+      latest_version: string;
+    }>();
+
+    checkToolLatestVersionMock.mockReturnValue(versionDeferred.promise);
+
+    // firstRender 存储首次渲染结果，后续卸载模拟切走概览 tab。
+    const firstRender = render(<Dashboard />);
+
+    await user.click(screen.getByRole("button", { name: "查询最新版本" }));
+    expect(screen.getByRole("button", { name: "查询最新版本" })).toBeDisabled();
+
+    firstRender.unmount();
+
+    render(<Dashboard />);
+
+    // remountedButton 存储重新挂载后的查询按钮，应继续呈现 loading。
+    const remountedButton = screen.getByRole("button", { name: "查询最新版本" });
+    expect(remountedButton).toBeDisabled();
+    expect(within(remountedButton).getByTestId("loading-icon")).toBeInTheDocument();
+
+    versionDeferred.resolve({
+      tool_id: "claude",
+      package_name: "@anthropic-ai/claude-code",
+      latest_version: "2.1.196",
+    });
+
+    expect(await screen.findByText("最新版本：2.1.196")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查询最新版本" })).not.toBeDisabled();
   });
 });

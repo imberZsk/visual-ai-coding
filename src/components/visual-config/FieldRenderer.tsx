@@ -10,6 +10,8 @@ interface FieldRendererProps {
   onChange: (value: unknown) => void; // onChange 用于把解析成功的新值回传给父组件。
   onUnset: () => void; // onUnset 用于删除当前字段配置。
   onToggle: () => void; // onToggle 用于切换当前字段的收起或展开状态。
+  hidden: boolean; // hidden 标记该字段是否被用户手动隐藏到更多配置区域。
+  onToggleHidden: () => void; // onToggleHidden 用于切换该字段的手动隐藏状态。
 }
 
 // 将任意值转换为普通文本输入框可显示的字符串。
@@ -64,6 +66,8 @@ export default function FieldRenderer({
   onChange,
   onUnset,
   onToggle,
+  hidden,
+  onToggleHidden,
 }: FieldRendererProps) {
   // shouldRenderDetails 标记详情内容是否仍需挂载，收起时保留到动画结束再卸载。
   const [shouldRenderDetails, setShouldRenderDetails] = useState(expanded);
@@ -91,6 +95,13 @@ export default function FieldRenderer({
     : Array.isArray(value) && value.length > 0
     ? value.join("\n")
     : "未设置";
+  // selectOptions 存储 select 控件的静态候选项。
+  const selectOptions = field.options ?? [];
+  // hasCurrentSelectOption 标记当前 select 值是否已经包含在 schema 候选项中。
+  const hasCurrentSelectOption = selectOptions.some((option) => option.value === valueText);
+  // shouldShowCurrentSelectOption 标记是否需要临时补一个当前自定义值，避免未知模型显示为空。
+  const shouldShowCurrentSelectOption =
+    field.control === "select" && valueText !== "" && !hasCurrentSelectOption;
 
   useEffect(() => {
     if (expanded) {
@@ -192,12 +203,30 @@ export default function FieldRenderer({
           <span className="mt-1 block text-xs text-text-muted">范围：{field.scope}</span>
         </button>
         {isSet && (
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              className="text-xs text-text-muted hover:text-text-main"
+              type="button"
+              onClick={onUnset}
+            >
+              取消设置
+            </button>
+            <button
+              className="text-xs text-text-muted hover:text-text-main"
+              type="button"
+              onClick={onToggleHidden}
+            >
+              {hidden ? `取消隐藏${field.title}` : `隐藏${field.title}`}
+            </button>
+          </div>
+        )}
+        {!isSet && (
           <button
             className="shrink-0 text-xs text-text-muted hover:text-text-main"
             type="button"
-            onClick={onUnset}
+            onClick={onToggleHidden}
           >
-            取消设置
+            {hidden ? `取消隐藏${field.title}` : `隐藏${field.title}`}
           </button>
         )}
       </div>
@@ -225,10 +254,17 @@ export default function FieldRenderer({
               <select
                 className="w-full rounded-lg border border-border bg-panel px-3 py-2 text-sm text-text-main outline-none focus:border-accent"
                 value={valueText}
-                onChange={(event) => onChange(event.target.value)}
+                onChange={(event) => {
+                  // nextValue 存储下拉框选中的原始字符串，空串代表回到未设置态。
+                  const nextValue = event.target.value;
+                  onChange(nextValue === "" ? undefined : nextValue);
+                }}
               >
                 <option value="">未设置</option>
-                {(field.options ?? []).map((option) => (
+                {shouldShowCurrentSelectOption && (
+                  <option value={valueText}>{valueText}（当前值）</option>
+                )}
+                {selectOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>

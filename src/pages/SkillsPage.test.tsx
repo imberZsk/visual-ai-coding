@@ -118,6 +118,20 @@ describe("SkillsPage", () => {
     });
   });
 
+  // 验证 VSCode 打开入口使用图标按钮，视觉上与 visual-worktree 的操作按钮保持一致。
+  it("renders the VSCode action as an icon button", async () => {
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+
+    // button 存储第一个 VSCode 图标按钮，用于确认其仍保留可访问名称。
+    const button = screen.getAllByRole("button", { name: "VSCode" })[0];
+    expect(within(button).getByRole("img", { name: "vscode" })).toBeInTheDocument();
+    expect(button).toHaveClass("h-8");
+    expect(button).toHaveClass("w-8");
+    expect(button).not.toHaveTextContent("VSCode");
+  });
+
   // 验证刷新按钮在重新加载 skill 时复用图标 loading，避免页面出现双重加载文案。
   it("shows icon loading while refreshing skills", async () => {
     // user 存储用户交互模拟器，用于点击刷新按钮。

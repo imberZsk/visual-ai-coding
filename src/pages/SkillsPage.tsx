@@ -8,6 +8,17 @@ import type { SkillInfo, SkillListResult } from "../types";
 // INITIAL_SKILL_LOAD_DELAY_MS 存储首次扫描延迟，用于让 tab 切换动画先完成。
 const INITIAL_SKILL_LOAD_DELAY_MS = 180;
 
+// VscodeIcon 渲染简化版 VSCode logo，用于 Skill 行的“在 VSCode 中打开”图标按钮。
+function VscodeIcon() {
+  return (
+    <span role="img" aria-label="vscode" className="inline-flex text-base leading-none">
+      <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M17.484 0.291l-8.082 7.952L4.18 4.503 0 6.875l5.263 5.125L0 17.126l4.18.372 5.222-3.742 8.082 7.952L24 19.237V4.763L17.484.291zM18 18.582l-6.667-6.582L18 5.418v13.164z" />
+      </svg>
+    </span>
+  );
+}
+
 // toolTone 根据 skill 所属工具返回徽章色调。
 // tool 为后端返回的工具域标识。
 function toolTone(tool: SkillInfo["tool"]): "neutral" | "success" | "warning" | "info" {
@@ -137,9 +148,11 @@ function SkillRow({
           }}
           variant="ghost"
           disabled={!canOpenInVscode}
+          className="h-8 w-8 px-0 py-0 text-accent hover:bg-accent/10 hover:text-accent"
           title={canOpenInVscode ? "用 VSCode 打开 SKILL.md" : "请先在设置中配置 VSCode CLI 路径"}
+          ariaLabel="VSCode"
         >
-          VSCode
+          <VscodeIcon />
         </Button>
       </div>
     </div>

@@ -194,4 +194,47 @@ describe("visual config schemas", () => {
 
     expect(envField?.sensitive).toBe(true);
   });
+
+  // 该回调用于验证模型选择字段使用下拉枚举，并覆盖当前常用的新模型入口。
+  it("uses model select options for Claude and Codex model fields", () => {
+    // claudeFields 存储 Claude schema 中展平后的全部字段定义。
+    const claudeFields = CLAUDE_SETTINGS_SCHEMA.groups.flatMap(
+      // group 参数存储当前遍历到的 Claude schema 分组定义。
+      (group) => group.fields
+    );
+    // codexFields 存储 Codex schema 中展平后的全部字段定义。
+    const codexFields = CODEX_CONFIG_SCHEMA.groups.flatMap(
+      // group 参数存储当前遍历到的 Codex schema 分组定义。
+      (group) => group.fields
+    );
+    // claudeModelField 存储 Claude 默认模型字段定义。
+    const claudeModelField = claudeFields.find(
+      // field 参数存储当前遍历到的单个 Claude 字段定义。
+      (field) => field.path === "model"
+    );
+    // codexModelField 存储 Codex 默认模型字段定义。
+    const codexModelField = codexFields.find(
+      // field 参数存储当前遍历到的单个 Codex 字段定义。
+      (field) => field.path === "model"
+    );
+    // claudeModelValues 存储 Claude 模型下拉框可写入配置的值。
+    const claudeModelValues = claudeModelField?.options?.map(
+      // option 参数存储当前遍历到的 Claude 模型选项定义。
+      (option) => option.value
+    );
+    // codexModelValues 存储 Codex 模型下拉框可写入配置的值。
+    const codexModelValues = codexModelField?.options?.map(
+      // option 参数存储当前遍历到的 Codex 模型选项定义。
+      (option) => option.value
+    );
+
+    expect(claudeModelField?.control).toBe("select");
+    expect(claudeModelValues).toEqual(
+      expect.arrayContaining(["sonnet5", "opus4.8", "fable", "claude-sonnet-5", "claude-opus-4-8"])
+    );
+    expect(codexModelField?.control).toBe("select");
+    expect(codexModelValues).toEqual(
+      expect.arrayContaining(["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"])
+    );
+  });
 });

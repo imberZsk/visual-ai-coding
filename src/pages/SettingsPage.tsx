@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useAppStore } from "../store";
 import { PageHeader, Card, Button, SectionTitle } from "../components/ui";
+import { DashboardContent } from "./Dashboard";
 
 // 主题选项定义：值与展示文案
 const THEME_OPTIONS = [
@@ -10,14 +11,8 @@ const THEME_OPTIONS = [
   { value: "system", label: "跟随系统" },
 ];
 
-// 设置内容属性：控制内容在页面或抽屉中的附加入口。
-interface SettingsContentProps {
-  // onOpenDashboard 为点击概览入口时触发的回调，抽屉场景用于切换页面并关闭抽屉。
-  onOpenDashboard?: () => void;
-}
-
 // 应用设置内容组件：复用主题、路径与保存设置，供页面和右侧抽屉共同使用。
-export function SettingsContent({ onOpenDashboard }: SettingsContentProps) {
+export function SettingsContent() {
   // prefs 为应用偏好
   const prefs = useAppStore((s) => s.prefs);
   // updatePrefs 用于更新并持久化偏好
@@ -61,15 +56,10 @@ export function SettingsContent({ onOpenDashboard }: SettingsContentProps) {
 
   return (
     <div className="space-y-4">
-      {/* 概览入口：主导航移除概览后，抽屉提供返回 Dashboard 的入口。 */}
-      {onOpenDashboard && (
-        <Card>
-          <SectionTitle>导航</SectionTitle>
-          <Button onClick={onOpenDashboard} variant="default" className="w-full justify-start">
-            概览
-          </Button>
-        </Card>
-      )}
+      {/* 概览内容：设置抽屉里直接查看工具状态，不再切换到单独概览路由。 */}
+      <Card>
+        <DashboardContent compact />
+      </Card>
 
       {/* 主题设置 */}
       <Card>

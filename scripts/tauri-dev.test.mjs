@@ -12,7 +12,7 @@ describe("tauri dev wrapper", () => {
       build: {
         devPath: "http://127.0.0.1:1421",
         beforeDevCommand:
-          "npm run dev -- --host 127.0.0.1 --port 1421 --strictPort",
+          "npm run dev-base -- --host 127.0.0.1 --port 1421 --strictPort",
       },
     });
   });

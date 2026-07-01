@@ -7,6 +7,7 @@ export interface Preferences {
   claude_home: string; // Claude 配置根目录
   codex_home: string; // Codex 配置根目录
   last_active_tab: string; // 上次激活的页面
+  hidden_visual_config_fields: Record<string, string[]>; // 可视化配置中用户手动隐藏的字段路径，按 schema id 分组
 }
 
 // 单个配置文件，对应 Rust ConfigFile

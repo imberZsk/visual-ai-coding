@@ -4,6 +4,7 @@ import type {
   VisualConfigRisk,
   VisualConfigSchema,
 } from "../components/visual-config/schemaTypes";
+import { CLAUDE_MODEL_OPTIONS } from "./modelOptions";
 
 // USER_PROJECT_LOCAL_SCOPE 存储 Claude settings 在三类常见配置层级中的生效说明。
 const USER_PROJECT_LOCAL_SCOPE = "用户级、项目级、本地级均可覆盖；实际优先级以 Claude Code 合并结果为准。";
@@ -47,7 +48,9 @@ export const CLAUDE_SETTINGS_SCHEMA: VisualConfigSchema = {
       title: "模型与 Agent",
       description: "控制主会话、Advisor、子代理、推理强度和模型可选范围。",
       fields: [
-        field("model", "默认模型", "Claude Code 默认使用的模型别名或完整模型名。", "text"),
+        field("model", "默认模型", "Claude Code 默认使用的模型别名或完整模型名。", "select", USER_PROJECT_LOCAL_SCOPE, "normal", {
+          options: CLAUDE_MODEL_OPTIONS,
+        }),
         field(
           "fallbackModel",
           "Fallback 模型",
@@ -58,7 +61,10 @@ export const CLAUDE_SETTINGS_SCHEMA: VisualConfigSchema = {
           "advisorModel",
           "Advisor 模型",
           "Advisor 工具使用的模型别名或完整模型 ID；取消设置可停用 Advisor 默认模型。",
-          "text"
+          "select",
+          USER_PROJECT_LOCAL_SCOPE,
+          "normal",
+          { options: CLAUDE_MODEL_OPTIONS }
         ),
         field(
           "agent",
@@ -135,9 +141,10 @@ export const CLAUDE_SETTINGS_SCHEMA: VisualConfigSchema = {
           "teammateDefaultModel",
           "Teammate 默认模型",
           "agent team teammate 在 spawn prompt 未指定模型时使用的默认模型。",
-          "text",
+          "select",
           USER_SCOPE,
-          "experimental"
+          "experimental",
+          { options: CLAUDE_MODEL_OPTIONS }
         ),
       ],
     },

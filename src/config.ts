@@ -101,6 +101,9 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { id: "claude", label: "Claude Code" },
   { id: "codex", label: "Codex" },
+  { id: "hooks", label: "Hooks" },
+  { id: "mcp", label: "MCP" },
+  { id: "agents", label: "Agents" },
   { id: "plugins", label: "插件" },
   { id: "skills", label: "技能" },
 ];

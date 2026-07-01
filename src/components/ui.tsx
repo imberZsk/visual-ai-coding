@@ -72,6 +72,7 @@ export function Button({
   loading = false,
   className = "",
   title,
+  ariaLabel,
 }: {
   children: ReactNode; // 按钮文本
   onClick?: () => void; // 点击回调
@@ -80,6 +81,7 @@ export function Button({
   loading?: boolean; // 是否展示图标式加载状态
   className?: string; // 额外样式
   title?: string; // 悬浮提示
+  ariaLabel?: string; // 可访问名称，供图标按钮等无可见文字的按钮使用
 }) {
   // base 为所有变体共用的基础样式
   const base =
@@ -96,6 +98,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled || loading}
       aria-busy={loading}
+      aria-label={ariaLabel}
       title={title}
       className={`${base} ${variantClass} ${className}`}
     >

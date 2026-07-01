@@ -6,6 +6,9 @@ import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import ClaudePage from "./pages/ClaudePage";
 import CodexPage from "./pages/CodexPage";
+import HooksPage from "./pages/HooksPage";
+import McpPage from "./pages/McpPage";
+import AgentsPage from "./pages/AgentsPage";
 import PluginsPage from "./pages/PluginsPage";
 import SkillsPage from "./pages/SkillsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -23,6 +26,15 @@ function renderPage(tab: string) {
     // Codex 配置页
     case "codex":
       return <CodexPage />;
+    // Hooks 能力页
+    case "hooks":
+      return <HooksPage />;
+    // MCP 能力页
+    case "mcp":
+      return <McpPage />;
+    // Agents 能力页
+    case "agents":
+      return <AgentsPage />;
     // 插件管理页
     case "plugins":
       return <PluginsPage />;

@@ -30,6 +30,23 @@ vi.mock("@tauri-apps/api/tauri", () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
+// createEmptyPluginToolState 创建插件区块空状态，供测试重置真实 store。
+function createEmptyPluginToolState() {
+  return { loading: false, result: null, error: "" };
+}
+
+// createEmptyPluginPageState 创建插件页空状态，避免不同用例间共享异步结果。
+function createEmptyPluginPageState() {
+  return {
+    claude: createEmptyPluginToolState(),
+    codex: createEmptyPluginToolState(),
+    refreshingAll: false,
+    update: null,
+    checking: {},
+    updating: {},
+  };
+}
+
 // getUpdateButtonInSection 按工具区块标题定位“拉取更新”按钮，避免多个同名按钮导致测试脆弱。
 // sectionTitle 为工具区块标题。
 function getUpdateButtonInSection(sectionTitle: string): HTMLElement {
@@ -54,9 +71,11 @@ describe("PluginsPage", () => {
         claude_home: "/Users/test/.claude",
         codex_home: "/Users/test/.codex",
         last_active_tab: "plugins",
+        hidden_visual_config_fields: {},
       },
       tools: [],
       loaded: true,
+      pluginPage: createEmptyPluginPageState(),
     });
     invokeMock.mockReset();
     invokeMock.mockImplementation((command: string) => {
@@ -112,6 +131,7 @@ describe("PluginsPage", () => {
       prefs: null,
       tools: [],
       loaded: false,
+      pluginPage: createEmptyPluginPageState(),
     });
   });
 
@@ -355,94 +375,93 @@ describe("PluginsPage", () => {
     expect(within(firstUpdateButton).getByTestId("loading-icon")).toBeInTheDocument();
     expect(secondUpdateButton).not.toBeDisabled();
 
-    updateDeferred.resolve("updated");
+    await act(async () => {
+      updateDeferred.resolve("updated");
+    });
 
     await waitFor(() => {
-      expect(firstUpdateButton).not.toBeDisabled();
+      expect(screen.getByText("superpowers@superpowers-dev 更新成功")).toBeInTheDocument();
     });
   });
 
   // 验证检查中的状态存放在 store，页面卸载再挂载后仍保留按钮 loading，并在 Promise 完成后更新结果。
   it("preserves in-flight check loading and result across unmount and remount", async () => {
-    vi.useFakeTimers();
+    // user 存储用户交互模拟器，用于手动启动检查，避免依赖首轮延迟 timer。
+    const user = userEvent.setup();
+    // claudeDeferred 存储首轮 Claude 检查 Promise，用于跨卸载验证仍在进行。
+    const claudeDeferred = createDeferred<unknown>();
 
-    try {
-      // claudeDeferred 存储首轮 Claude 检查 Promise，用于跨卸载验证仍在进行。
-      const claudeDeferred = createDeferred<unknown>();
-
-      invokeMock.mockImplementation((command: string) => {
-        if (command === "check_claude_plugin_updates") {
-          return claudeDeferred.promise;
-        }
-        if (command === "check_codex_plugin_updates") {
-          return Promise.resolve({
-            tool: "codex",
-            raw_output: "{}",
-            diagnostics: "",
-            plugins: [],
-          });
-        }
-        return Promise.resolve([]);
-      });
-
-      // firstRenderResult 存储首次渲染结果，后续会卸载模拟 tab 切换。
-      const firstRenderResult = render(<PluginsPage />);
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(220);
-      });
-
-      // firstClaudeSection 存储首次挂载时的 Claude 区块。
-      const firstClaudeSection = screen.getByText("Claude 插件").closest("section");
-      expect(firstClaudeSection).not.toBeNull();
-      expect(
-        within(firstClaudeSection as HTMLElement).getByRole("button", { name: "检查更新" })
-      ).toBeDisabled();
-
-      firstRenderResult.unmount();
-
-      render(<PluginsPage />);
-
-      // remountedClaudeSection 存储重新挂载后的 Claude 区块。
-      const remountedClaudeSection = screen.getByText("Claude 插件").closest("section");
-      expect(remountedClaudeSection).not.toBeNull();
-      expect(
-        within(remountedClaudeSection as HTMLElement).getByRole("button", {
-          name: "检查更新",
-        })
-      ).toBeDisabled();
-
-      await act(async () => {
-        claudeDeferred.resolve({
-          tool: "claude",
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "check_claude_plugin_updates") {
+        return claudeDeferred.promise;
+      }
+      if (command === "check_codex_plugin_updates") {
+        return Promise.resolve({
+          tool: "codex",
           raw_output: "{}",
           diagnostics: "",
-          plugins: [
-            {
-              id: "persistent@superpowers-dev",
-              name: "persistent",
-              marketplace: "superpowers-dev",
-              current_version: "1.0.0",
-              available_version: "1.0.1",
-              scope: "user",
-              enabled: true,
-              install_path: "/tmp/persistent",
-              last_updated: "",
-              update_status: "newer",
-            },
-          ],
+          plugins: [],
         });
-      });
+      }
+      return Promise.resolve([]);
+    });
 
-      expect(await screen.findByText("persistent@superpowers-dev")).toBeInTheDocument();
-      expect(
-        within(remountedClaudeSection as HTMLElement).getByRole("button", {
-          name: "检查更新",
-        })
-      ).not.toBeDisabled();
-    } finally {
-      vi.useRealTimers();
-    }
+    // firstRenderResult 存储首次渲染结果，后续会卸载模拟 tab 切换。
+    const firstRenderResult = render(<PluginsPage />);
+
+    // firstClaudeSection 存储首次挂载时的 Claude 区块。
+    const firstClaudeSection = screen.getByText("Claude 插件").closest("section");
+    expect(firstClaudeSection).not.toBeNull();
+
+    await user.click(
+      within(firstClaudeSection as HTMLElement).getByRole("button", { name: "检查更新" })
+    );
+    expect(
+      within(firstClaudeSection as HTMLElement).getByRole("button", { name: "检查更新" })
+    ).toBeDisabled();
+
+    firstRenderResult.unmount();
+
+    render(<PluginsPage />);
+
+    // remountedClaudeSection 存储重新挂载后的 Claude 区块。
+    const remountedClaudeSection = screen.getByText("Claude 插件").closest("section");
+    expect(remountedClaudeSection).not.toBeNull();
+    expect(
+      within(remountedClaudeSection as HTMLElement).getByRole("button", {
+        name: "检查更新",
+      })
+    ).toBeDisabled();
+
+    await act(async () => {
+      claudeDeferred.resolve({
+        tool: "claude",
+        raw_output: "{}",
+        diagnostics: "",
+        plugins: [
+          {
+            id: "persistent@superpowers-dev",
+            name: "persistent",
+            marketplace: "superpowers-dev",
+            current_version: "1.0.0",
+            available_version: "1.0.1",
+            scope: "user",
+            enabled: true,
+            install_path: "/tmp/persistent",
+            last_updated: "",
+            update_status: "newer",
+          },
+        ],
+      });
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("persistent@superpowers-dev")).toBeInTheDocument();
+    expect(
+      within(remountedClaudeSection as HTMLElement).getByRole("button", {
+        name: "检查更新",
+      })
+    ).not.toBeDisabled();
   });
 
   // 验证 Codex 检查失败时，Claude 区块仍然可以独立展示，避免单工具失败阻断整页。

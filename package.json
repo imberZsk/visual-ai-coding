@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/dev-or-reuse.mjs",
+    "dev-base": "node scripts/dev-or-reuse.mjs",
+    "dev": "node scripts/tauri-dev.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

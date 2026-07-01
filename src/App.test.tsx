@@ -39,6 +39,7 @@ vi.mock("./hooks/useTheme", () => ({
 }));
 
 vi.mock("./pages/Dashboard", () => ({
+  DashboardContent: () => <div>概览内嵌内容</div>,
   default: () => <div>概览页面</div>,
 }));
 
@@ -56,6 +57,18 @@ vi.mock("./pages/PluginsPage", () => ({
 
 vi.mock("./pages/SkillsPage", () => ({
   default: () => <div>技能页面</div>,
+}));
+
+vi.mock("./pages/HooksPage", () => ({
+  default: () => <div>Hooks 页面</div>,
+}));
+
+vi.mock("./pages/McpPage", () => ({
+  default: () => <div>MCP 页面</div>,
+}));
+
+vi.mock("./pages/AgentsPage", () => ({
+  default: () => <div>Agents 页面</div>,
 }));
 
 describe("App tab loading", () => {
@@ -88,9 +101,10 @@ describe("App tab loading", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "插件" }));
 
-    // activeIndicator 存储顶部 tab 背景滑块，切到“插件”时应移动到第 3 个可见 tab。
+    // activeIndicator 存储顶部 tab 背景滑块，切到“插件”时应显示但不再使用等分 translateX 算法。
     const activeIndicator = screen.getByTestId("tab-active-indicator");
-    expect(activeIndicator).toHaveStyle({ transform: "translateX(200%)" });
+    expect(activeIndicator).toHaveStyle({ opacity: "1" });
+    expect(activeIndicator.style.transform).not.toBe("translateX(500%)");
 
     expect(screen.queryByText("页面加载中…")).not.toBeInTheDocument();
     expect(screen.queryByTestId("tab-loading-indicator")).not.toBeInTheDocument();
@@ -106,6 +120,10 @@ describe("App tab loading", () => {
     expect(screen.getByRole("banner")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "主导航" })).toBeInTheDocument();
     expect(rendered.container.querySelector("aside")).not.toBeInTheDocument();
+    expect(screen.getByTestId("top-header")).toHaveClass("gap-3");
+    expect(screen.getByTestId("top-header-main")).toHaveClass("flex-1");
+    expect(screen.getByRole("navigation", { name: "主导航" })).toHaveClass("inline-flex");
+    expect(screen.getByRole("navigation", { name: "主导航" })).toHaveClass("w-auto");
   });
 
   // 验证 Dashboard 不在主导航时仍显示页面内容，并隐藏导航滑块避免落在第一个页签上。
@@ -130,7 +148,29 @@ describe("App tab loading", () => {
     expect(within(nav).queryByRole("button", { name: "应用设置" })).not.toBeInTheDocument();
   });
 
-  // 验证设置按钮可打开右侧抽屉，并展示真实设置表单内容。
+  // 验证 Hooks、MCP、Agents 作为跨工具能力入口出现在主导航，并能切换到对应页面。
+  it("renders Hooks MCP and Agents as main navigation tabs", async () => {
+    // rendered 存储 App 渲染结果，供 mock store 在页签切换时触发重渲染。
+    const rendered = render(<App />);
+    rerenderApp = () => rendered.rerender(<App />);
+
+    // nav 存储主导航区域，用于限定按钮查询范围。
+    const nav = screen.getByRole("navigation", { name: "主导航" });
+    expect(within(nav).getByRole("button", { name: "Hooks" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "MCP" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Agents" })).toBeInTheDocument();
+
+    fireEvent.click(within(nav).getByRole("button", { name: "Hooks" }));
+    expect(screen.getByText("Hooks 页面")).toBeInTheDocument();
+
+    fireEvent.click(within(nav).getByRole("button", { name: "MCP" }));
+    expect(screen.getByText("MCP 页面")).toBeInTheDocument();
+
+    fireEvent.click(within(nav).getByRole("button", { name: "Agents" }));
+    expect(screen.getByText("Agents 页面")).toBeInTheDocument();
+  });
+
+  // 验证设置按钮可打开更宽的右侧抽屉，并直接展示概览与真实设置表单内容。
   it("opens the settings drawer from the top settings button", () => {
     // rendered 存储 App 渲染结果，供 mock store 触发重渲染。
     const rendered = render(<App />);
@@ -141,6 +181,8 @@ describe("App tab loading", () => {
     // drawer 存储设置抽屉，确保标题与设置内容都在抽屉内出现。
     const drawer = screen.getByRole("dialog", { name: "设置" });
     expect(drawer).toBeInTheDocument();
+    expect(drawer).toHaveClass("max-w-3xl");
+    expect(within(drawer).getByText("概览内嵌内容")).toBeInTheDocument();
     expect(within(drawer).getByText("主题")).toBeInTheDocument();
     expect(within(drawer).getByLabelText("VSCode CLI 路径（默认 code）")).toBeInTheDocument();
     expect(within(drawer).getByLabelText("Claude 配置目录")).toBeInTheDocument();
@@ -148,8 +190,8 @@ describe("App tab loading", () => {
     expect(within(drawer).getByRole("button", { name: "保存" })).toBeInTheDocument();
   });
 
-  // 验证抽屉里的概览入口会切到 Dashboard 页面并关闭抽屉。
-  it("switches to dashboard from the settings drawer overview entry", () => {
+  // 验证抽屉里的概览是内嵌内容，不再切换到 Dashboard 路由。
+  it("keeps overview embedded in the settings drawer without changing routes", () => {
     storeState = {
       ...storeState,
       prefs: {
@@ -163,10 +205,11 @@ describe("App tab loading", () => {
     rerenderApp = () => rendered.rerender(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "设置" })).getByRole("button", { name: "概览" }));
 
-    expect(screen.getByText("概览页面")).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "设置" })).not.toBeInTheDocument();
+    expect(storeState.prefs.last_active_tab).toBe("claude");
+    expect(screen.getByText("Claude 页面")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "设置" })).toBeInTheDocument();
+    expect(screen.getByText("概览内嵌内容")).toBeInTheDocument();
   });
 
   // 验证主题快捷按钮只显示图标，依旧能按 light/dark/system 循环更新偏好。

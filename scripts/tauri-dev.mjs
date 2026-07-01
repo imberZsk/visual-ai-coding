@@ -19,7 +19,7 @@ export function buildTauriDevConfig(host, port) {
   return {
     build: {
       devPath: buildDevServerUrl(host, port),
-      beforeDevCommand: `npm run dev -- --host ${host} --port ${port} --strictPort`,
+      beforeDevCommand: `npm run dev-base -- --host ${host} --port ${port} --strictPort`,
     },
   };
 }

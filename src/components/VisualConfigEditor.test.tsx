@@ -7,6 +7,17 @@ import VisualConfigEditor from "./VisualConfigEditor";
 
 // invokeMock 存储 Tauri invoke 的测试替身。
 const invokeMock = vi.fn();
+// prefsMock 存储可视化配置编辑器测试用的应用偏好。
+let prefsMock = {
+  claude_home: "/Users/test/.claude",
+  codex_home: "/Users/test/.codex",
+  hidden_visual_config_fields: {} as Record<string, string[]>,
+  last_active_tab: "",
+  theme: "system",
+  vscode_path: "code",
+};
+// updatePrefsMock 存储更新应用偏好的测试替身，用于断言隐藏配置会持久化。
+const updatePrefsMock = vi.fn();
 
 // createDeferred 创建可手动 resolve/reject 的 Promise，方便测试 loading 过程。
 function createDeferred<T>() {
@@ -34,11 +45,8 @@ vi.mock("@tauri-apps/api/tauri", () => ({
 vi.mock("../store", () => ({
   useAppStore: (selector: (state: unknown) => unknown) =>
     selector({
-      prefs: {
-        claude_home: "/Users/test/.claude",
-        codex_home: "/Users/test/.codex",
-        vscode_path: "code",
-      },
+      prefs: prefsMock,
+      updatePrefs: updatePrefsMock,
     }),
 }));
 
@@ -122,6 +130,20 @@ custom_flag = { enabled = true, level = 2 }
 describe("VisualConfigEditor", () => {
   beforeEach(() => {
     invokeMock.mockReset();
+    updatePrefsMock.mockReset();
+    prefsMock = {
+      claude_home: "/Users/test/.claude",
+      codex_home: "/Users/test/.codex",
+      hidden_visual_config_fields: {},
+      last_active_tab: "",
+      theme: "system",
+      vscode_path: "code",
+    };
+    updatePrefsMock.mockImplementation(async (patch: Partial<typeof prefsMock>) => {
+      // nextPrefs 存储应用偏好更新后的内存快照，模拟 zustand store 的乐观更新。
+      const nextPrefs = { ...prefsMock, ...patch };
+      prefsMock = nextPrefs;
+    });
     invokeMock.mockResolvedValue({
       id: "claude-settings",
       title: "settings.json",
@@ -138,7 +160,7 @@ describe("VisualConfigEditor", () => {
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
     expect(screen.queryByDisplayValue("opus")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /默认模型/ }));
+    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
     expect(screen.getByDisplayValue("opus")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /显示高级字段/ })).toBeInTheDocument();
     expect(screen.queryByText("customFutureFlag")).not.toBeInTheDocument();
@@ -151,7 +173,7 @@ describe("VisualConfigEditor", () => {
     render(<VisualConfigEditor spec={spec} schema={schema} />);
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /默认模型/ }));
+    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
 
     // detailsRegion 存储字段详情展开区域，用于确认折叠动画结构存在。
     const detailsRegion = screen.getByTestId("field-details-model");
@@ -174,7 +196,7 @@ describe("VisualConfigEditor", () => {
     render(<VisualConfigEditor spec={spec} schema={schema} />);
 
     expect(await screen.findByText("环境变量")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /环境变量/ }));
+    fireEvent.click(screen.getByRole("button", { name: "环境变量 配置项" }));
     fireEvent.click(screen.getByRole("button", { name: "打开环境变量编辑" }));
 
     expect(screen.getByRole("dialog", { name: "编辑环境变量" })).toBeInTheDocument();
@@ -276,7 +298,7 @@ describe("VisualConfigEditor", () => {
       expect(screen.getByRole("button", { name: "刷新" })).not.toBeDisabled();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /默认模型/ }));
+    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
     expect(screen.getByDisplayValue("haiku")).toBeInTheDocument();
   });
 
@@ -320,7 +342,7 @@ describe("VisualConfigEditor", () => {
       expect(invokeMock).toHaveBeenCalledTimes(2);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /默认模型/ }));
+    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
     expect(screen.getByDisplayValue("sonnet")).toBeInTheDocument();
   });
 
@@ -329,7 +351,7 @@ describe("VisualConfigEditor", () => {
 
     // input 存储默认模型输入框。
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /默认模型/ }));
+    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
     const input = screen.getByDisplayValue("opus");
     fireEvent.change(input, { target: { value: "sonnet" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
@@ -347,6 +369,117 @@ describe("VisualConfigEditor", () => {
     // content 存储保存时生成的配置文本。
     const content = saveCall?.[1]?.content as string;
     expect(content).toContain('"customFutureFlag": true');
+  });
+
+  it("keeps the edited field open and enables saving again after a successful save", async () => {
+    invokeMock.mockImplementation(async (command: string, args?: { content?: string }) => {
+      if (command === "read_config_file") {
+        return {
+          id: "claude-settings",
+          title: "settings.json",
+          path: "/Users/test/.claude/settings.json",
+          format: "json",
+          content: JSON.stringify({ model: "opus" }, null, 2),
+          exists: true,
+          readonly: false,
+        };
+      }
+
+      if (command === "save_config_file") {
+        return undefined;
+      }
+
+      return args;
+    });
+
+    render(<VisualConfigEditor spec={spec} schema={schema} />);
+
+    expect(await screen.findByText("默认模型")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+
+    // modelInput 存储第一次编辑使用的模型输入控件。
+    const modelInput = screen.getByDisplayValue("opus");
+    fireEvent.change(modelInput, { target: { value: "sonnet" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("save_config_file", {
+        path: "/Users/test/.claude/settings.json",
+        content: expect.stringContaining('"model": "sonnet"'),
+        format: "json",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    });
+
+    expect(screen.getByDisplayValue("sonnet")).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("sonnet"), { target: { value: "fable" } });
+    expect(screen.getByRole("button", { name: "保存" })).not.toBeDisabled();
+  });
+
+  it("renders the current custom select value even when it is not in schema options", async () => {
+    // selectSchema 存储带模型下拉框的 schema，故意不包含 custom-local-model 选项。
+    const selectSchema: VisualConfigSchema = {
+      ...schema,
+      groups: [
+        {
+          ...schema.groups[0],
+          fields: schema.groups[0].fields.map((field) =>
+            field.path === "model"
+              ? {
+                  ...field,
+                  control: "select",
+                  options: [{ value: "sonnet5", label: "sonnet5" }],
+                }
+              : field
+          ),
+        },
+      ],
+    };
+
+    invokeMock.mockResolvedValueOnce({
+      id: "claude-settings",
+      title: "settings.json",
+      path: "/Users/test/.claude/settings.json",
+      format: "json",
+      content: JSON.stringify({ model: "custom-local-model" }, null, 2),
+      exists: true,
+      readonly: false,
+    });
+
+    render(<VisualConfigEditor spec={spec} schema={selectSchema} />);
+
+    expect(await screen.findByText("默认模型")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+
+    // modelSelect 存储默认模型下拉选择控件。
+    const modelSelect = screen.getByRole("combobox");
+    expect(modelSelect).toHaveValue("custom-local-model");
+    expect(
+      screen.getByRole("option", { name: "custom-local-model（当前值）" })
+    ).toBeInTheDocument();
+  });
+
+  it("persists manually hidden fields and shows them only after expanding more config", async () => {
+    // renderedEditor 存储渲染工具，用于在 mock store 更新后模拟组件重新渲染。
+    const renderedEditor = render(<VisualConfigEditor spec={spec} schema={schema} />);
+
+    expect(await screen.findByText("默认模型")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "隐藏默认模型" }));
+
+    expect(updatePrefsMock).toHaveBeenCalledWith({
+      hidden_visual_config_fields: {
+        "claude-settings": ["model"],
+      },
+    });
+    renderedEditor.rerender(<VisualConfigEditor spec={spec} schema={schema} />);
+    expect(screen.queryByText("默认模型")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /显示更多配置/ }));
+
+    expect(screen.getByText("默认模型")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "取消隐藏默认模型" })).toBeInTheDocument();
   });
 
   it("falls back to raw view when parsing fails", async () => {
@@ -380,8 +513,8 @@ describe("VisualConfigEditor", () => {
     render(<VisualConfigEditor spec={codexSpec} schema={CODEX_CONFIG_SCHEMA} />);
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /默认模型/ }));
-    expect(screen.getByDisplayValue("gpt-5")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    expect(screen.getByRole("combobox")).toHaveValue("gpt-5");
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
   });
@@ -399,10 +532,10 @@ describe("VisualConfigEditor", () => {
 
     render(<VisualConfigEditor spec={codexSpec} schema={CODEX_CONFIG_SCHEMA} />);
 
-    // modelInput 存储默认模型输入框。
+    // modelInput 存储默认模型下拉控件。
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /默认模型/ }));
-    const modelInput = screen.getByDisplayValue("gpt-5");
+    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    const modelInput = screen.getByRole("combobox");
     fireEvent.change(modelInput, { target: { value: "gpt-5-codex" } });
 
     fireEvent.click(screen.getByRole("button", { name: /显示高级字段/ }));

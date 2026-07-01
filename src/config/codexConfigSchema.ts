@@ -4,6 +4,7 @@ import type {
   VisualConfigRisk,
   VisualConfigSchema,
 } from "../components/visual-config/schemaTypes";
+import { CODEX_MODEL_OPTIONS } from "./modelOptions";
 
 // USER_PROJECT_SCOPE 存储 Codex 用户级与项目级配置的通用说明。
 const USER_PROJECT_SCOPE = "用户级、项目级配置；项目级配置只应放入适合随仓库共享的约束。";
@@ -46,8 +47,12 @@ export const CODEX_CONFIG_SCHEMA: VisualConfigSchema = {
       description: "控制默认模型、模型能力、provider 连接与 OpenAI/OSS 后端。",
       fields: [
         field("model_provider", "模型 Provider", "选择默认模型提供方。", "text", USER_ONLY_SCOPE),
-        field("model", "默认模型", "Codex agent 默认使用的模型。", "text"),
-        field("review_model", "评审模型", "Codex review 命令默认使用的模型。", "text"),
+        field("model", "默认模型", "Codex agent 默认使用的模型。", "select", USER_PROJECT_SCOPE, "normal", {
+          options: CODEX_MODEL_OPTIONS,
+        }),
+        field("review_model", "评审模型", "Codex review 命令默认使用的模型。", "select", USER_PROJECT_SCOPE, "normal", {
+          options: CODEX_MODEL_OPTIONS,
+        }),
         field("approvals_reviewer", "审批评审模型", "用于审批/评审相关流程的模型或 reviewer 配置。", "text", USER_ONLY_SCOPE, "experimental"),
         field("model_providers", "Provider 详情", "Provider URL、wire API、认证方式和 websocket 能力。", "toml-object", LOCAL_MACHINE_SCOPE, "sensitive", { sensitive: true }),
         field("openai_base_url", "OpenAI Base URL", "覆盖 OpenAI API base URL。", "text", LOCAL_MACHINE_SCOPE, "sensitive"),

@@ -89,6 +89,12 @@ function isUncommonUnsetField(fieldState: FieldRenderState): boolean {
   );
 }
 
+// normalizeHiddenFieldPaths 返回去重后的隐藏字段路径数组，保持用户配置文件可读。
+// paths 参数存储可能包含重复项的字段路径列表。
+function normalizeHiddenFieldPaths(paths: string[]): string[] {
+  return Array.from(new Set(paths));
+}
+
 // 按当前排序模式比较字段状态，同时保持同一状态内的 schema 原始顺序。
 // left 参数存储左侧字段状态，right 参数存储右侧字段状态，sortOrder 参数存储当前排序模式。
 function compareFieldState(
@@ -116,6 +122,8 @@ function compareFieldState(
 export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorProps) {
   // prefs 存储应用偏好，用于获取工具根目录和 VSCode CLI 路径。
   const prefs = useAppStore((state) => state.prefs);
+  // updatePrefs 存储更新应用偏好的 store 方法，用于持久化用户隐藏的配置项。
+  const updatePrefs = useAppStore((state) => state.updatePrefs);
   // file 存储当前已加载配置文件。
   const [file, setFile] = useState<ConfigFile | null>(null);
   // rawDraft 存储原始文本编辑草稿。
@@ -157,6 +165,11 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   const unknownKeys = useMemo(
     () => listUnknownTopLevelKeys(configDraft, knownPaths),
     [configDraft, knownPaths]
+  );
+  // hiddenFieldPathSet 存储当前 schema 中被用户手动隐藏的字段路径集合。
+  const hiddenFieldPathSet = useMemo(
+    () => new Set(prefs?.hidden_visual_config_fields?.[schema.id] ?? []),
+    [prefs?.hidden_visual_config_fields, schema.id]
   );
   // dirty 标记当前编辑状态是否相对磁盘内容发生变化。
   const dirty =
@@ -285,6 +298,31 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
     });
   }
 
+  // toggleFieldHidden 负责把字段移入或移出“更多配置”，并持久化到应用偏好。
+  // path 参数存储需要隐藏或取消隐藏的字段路径。
+  function toggleFieldHidden(path: string) {
+    // currentHiddenFields 存储当前 schema 已隐藏的字段路径列表。
+    const currentHiddenFields = prefs?.hidden_visual_config_fields?.[schema.id] ?? [];
+    // currentHiddenSet 存储当前 schema 已隐藏字段路径集合，用于切换指定字段。
+    const currentHiddenSet = new Set(currentHiddenFields);
+
+    if (currentHiddenSet.has(path)) {
+      currentHiddenSet.delete(path);
+    } else {
+      currentHiddenSet.add(path);
+    }
+
+    // nextHiddenFields 存储切换后的字段路径列表。
+    const nextHiddenFields = normalizeHiddenFieldPaths(Array.from(currentHiddenSet));
+    // nextHiddenFieldMap 存储写回偏好的完整隐藏字段映射，避免浅合并覆盖其他 schema。
+    const nextHiddenFieldMap = {
+      ...(prefs?.hidden_visual_config_fields ?? {}),
+      [schema.id]: nextHiddenFields,
+    };
+
+    void updatePrefs({ hidden_visual_config_fields: nextHiddenFieldMap });
+  }
+
   // toggleMoreFields 负责切换低频配置区域的展示状态。
   function toggleMoreFields() {
     setShowMoreFields((currentShowMoreFields) => {
@@ -336,6 +374,9 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   // renderField 负责渲染带折叠状态的单个字段。
   // fieldState 参数存储字段元数据、当前值和设置状态。
   function renderField(fieldState: FieldRenderState) {
+    // fieldHidden 标记当前字段是否被用户手动隐藏到更多配置区域。
+    const fieldHidden = hiddenFieldPathSet.has(fieldState.field.path);
+
     return (
       <FieldRenderer
         key={fieldState.field.path}
@@ -346,6 +387,8 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
         onChange={(value) => handleFieldChange(fieldState.field.path, value)}
         onUnset={() => handleFieldUnset(fieldState.field.path)}
         onToggle={() => toggleFieldExpanded(fieldState.field.path)}
+        hidden={fieldHidden}
+        onToggleHidden={() => toggleFieldHidden(fieldState.field.path)}
       />
     );
   }
@@ -377,8 +420,23 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
       const content =
         activeView === "raw" ? rawDraft : serializeConfigContent(configDraft, schema.format);
       await saveConfigFile(file.path, content, file.format);
+      setRawDraft(content);
+      setBaselineRawText(content);
+
+      try {
+        // savedConfig 存储刚保存内容的结构化对象，用于同步可视化草稿和规范化基线。
+        const savedConfig = parseConfigContent(content, schema.format);
+        // normalizedSavedText 存储刚保存内容按当前格式重新序列化后的文本基线。
+        const normalizedSavedText = serializeConfigContent(savedConfig, schema.format);
+        setConfigDraft(savedConfig);
+        setBaselineVisualText(normalizedSavedText);
+        setParseError(null);
+      } catch (error) {
+        // raw 视图允许用户保存不可切回 visual 的草稿时，保留错误状态给切换视图时继续提示。
+        setParseError(String(error));
+      }
+
       setMessage({ type: "ok", text: "已保存" });
-      await load();
     } catch (error) {
       setMessage({ type: "err", text: String(error) });
     } finally {
@@ -492,13 +550,21 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
             });
             // primaryFieldStates 存储默认展示的字段，已设置字段会排在未设置字段之前。
             const primaryFieldStates = fieldStates
-              .filter((fieldState) => !isUncommonUnsetField(fieldState))
+              .filter(
+                (fieldState) =>
+                  !hiddenFieldPathSet.has(fieldState.field.path) &&
+                  !isUncommonUnsetField(fieldState)
+              )
               .sort((leftFieldState, rightFieldState) =>
                 compareFieldState(leftFieldState, rightFieldState, fieldSortOrder)
               );
-            // uncommonFieldStates 存储默认隐藏的低频未设置字段。
-            const uncommonFieldStates = fieldStates
-              .filter((fieldState) => isUncommonUnsetField(fieldState))
+            // moreFieldStates 存储默认隐藏的低频未设置字段，以及用户手动隐藏的字段。
+            const moreFieldStates = fieldStates
+              .filter(
+                (fieldState) =>
+                  hiddenFieldPathSet.has(fieldState.field.path) ||
+                  isUncommonUnsetField(fieldState)
+              )
               .sort((leftFieldState, rightFieldState) =>
                 compareFieldState(leftFieldState, rightFieldState, fieldSortOrder)
               );
@@ -511,7 +577,7 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
                 </div>
                 <div className="space-y-3">
                   {primaryFieldStates.map((fieldState) => renderField(fieldState))}
-                  {uncommonFieldStates.length > 0 && (
+                  {moreFieldStates.length > 0 && (
                     <div className="rounded-lg border border-dashed border-border bg-surface/60 p-3">
                       <button
                         aria-expanded={showMoreFields}
@@ -520,12 +586,12 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
                         onClick={toggleMoreFields}
                       >
                         {showMoreFields
-                          ? `隐藏更多配置（${uncommonFieldStates.length}）`
-                          : `显示更多配置（${uncommonFieldStates.length}）`}
+                          ? `隐藏更多配置（${moreFieldStates.length}）`
+                          : `显示更多配置（${moreFieldStates.length}）`}
                       </button>
                       {showMoreFields && (
                         <div className="mt-3 space-y-3">
-                          {uncommonFieldStates.map((fieldState) => renderField(fieldState))}
+                          {moreFieldStates.map((fieldState) => renderField(fieldState))}
                         </div>
                       )}
                     </div>

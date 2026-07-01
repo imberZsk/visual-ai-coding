@@ -1,5 +1,6 @@
 // 应用偏好持久化模块：所有可配置项落盘到 ~/.visualAiCoding/preferences.json
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 // 应用偏好数据结构：持久化到 ~/.visualAiCoding/preferences.json
@@ -20,6 +21,9 @@ pub struct Preferences {
     // 上次激活的页面/标签，便于恢复界面状态
     #[serde(default)]
     pub last_active_tab: String,
+    // 可视化配置中被用户手动隐藏的字段路径，按 schema id 分组
+    #[serde(default)]
+    pub hidden_visual_config_fields: HashMap<String, Vec<String>>,
 }
 
 // 默认主题：跟随系统
@@ -59,6 +63,7 @@ impl Default for Preferences {
             claude_home: default_claude_home(),
             codex_home: default_codex_home(),
             last_active_tab: String::new(),
+            hidden_visual_config_fields: HashMap::new(),
         }
     }
 }
