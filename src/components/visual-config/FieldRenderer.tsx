@@ -12,6 +12,10 @@ interface FieldRendererProps {
   onToggle: () => void; // onToggle 用于切换当前字段的收起或展开状态。
   hidden: boolean; // hidden 标记该字段是否被用户手动隐藏到更多配置区域。
   onToggleHidden: () => void; // onToggleHidden 用于切换该字段的手动隐藏状态。
+  showSaveButton: boolean; // showSaveButton 标记当前字段是否需要展示就地保存按钮。
+  saveDisabled: boolean; // saveDisabled 标记当前字段保存按钮是否禁用。
+  saving: boolean; // saving 标记当前字段是否正在保存。
+  onSave: () => void; // onSave 用于保存当前字段改动。
 }
 
 // 将任意值转换为普通文本输入框可显示的字符串。
@@ -68,9 +72,15 @@ export default function FieldRenderer({
   onToggle,
   hidden,
   onToggleHidden,
+  showSaveButton,
+  saveDisabled,
+  saving,
+  onSave,
 }: FieldRendererProps) {
   // shouldRenderDetails 标记详情内容是否仍需挂载，收起时保留到动画结束再卸载。
   const [shouldRenderDetails, setShouldRenderDetails] = useState(expanded);
+  // animationExpanded 标记详情区域是否进入展开动画终点，展开时延后一帧以保留补间起点。
+  const [animationExpanded, setAnimationExpanded] = useState(expanded);
   // modalOpen 标记大编辑弹窗是否打开。
   const [modalOpen, setModalOpen] = useState(false);
   // modalDraft 存储大编辑弹窗中的文本草稿。
@@ -82,13 +92,21 @@ export default function FieldRenderer({
   // detailsDomId 存储详情区域的 DOM 标识后缀。
   const detailsDomId = toDomId(field.path);
   // detailsClass 存储详情区域按展开状态计算出的动画样式。
-  const detailsClass = expanded
-    ? "mt-3 grid grid-rows-[1fr] opacity-100 transition-[grid-template-rows,opacity,margin-top] duration-200 ease-out"
-    : "mt-0 grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity,margin-top] duration-200 ease-out";
+  const detailsClass = animationExpanded
+    ? "mt-3 grid grid-rows-[1fr] overflow-visible opacity-100 transition-[grid-template-rows,opacity,margin-top] duration-[260ms] ease-out"
+    : "mt-0 grid grid-rows-[0fr] overflow-hidden opacity-0 transition-[grid-template-rows,opacity,margin-top] duration-[220ms] ease-out";
   // detailsContentClass 存储详情内容按展开状态计算出的淡入位移样式。
-  const detailsContentClass = expanded
-    ? "min-h-0 overflow-hidden translate-y-0 transition-[transform,opacity] duration-200 ease-out"
-    : "min-h-0 overflow-hidden -translate-y-1 transition-[transform,opacity] duration-150 ease-in";
+  const detailsContentClass = animationExpanded
+    ? "min-h-0 overflow-visible translate-y-0 opacity-100 transition-[transform,opacity] duration-[260ms] ease-out"
+    : "min-h-0 overflow-hidden -translate-y-1.5 opacity-0 transition-[transform,opacity] duration-[180ms] ease-out";
+  // animationState 存储详情区域当前动画阶段，便于测试和排查展开/收起动效。
+  const animationState = expanded
+    ? animationExpanded
+      ? "open"
+      : "opening"
+    : animationExpanded
+    ? "closing"
+    : "closed";
   // modalPreviewText 存储弹窗按钮旁边展示的字段当前内容预览。
   const modalPreviewText = isJsonTextareaControl(field.control)
     ? toJsonDraft(value) || "未设置"
@@ -102,22 +120,40 @@ export default function FieldRenderer({
   // shouldShowCurrentSelectOption 标记是否需要临时补一个当前自定义值，避免未知模型显示为空。
   const shouldShowCurrentSelectOption =
     field.control === "select" && valueText !== "" && !hasCurrentSelectOption;
+  // saveButtonClass 存储字段级保存按钮按禁用状态计算出的样式。
+  const saveButtonClass = saveDisabled
+    ? "border-border text-text-muted"
+    : "border-accent bg-accent text-white hover:opacity-90";
 
   useEffect(() => {
     if (expanded) {
       setShouldRenderDetails(true);
+      setAnimationExpanded(false);
+      // timer 存储进入展开终点的短延迟，WHY：让浏览器先渲染折叠态，再补间到展开态，避免展开瞬间跳出。
+      const timer = window.setTimeout(() => {
+        setAnimationExpanded(true);
+      }, 16);
+
+      return () => {
+        window.clearTimeout(timer);
+      };
+    }
+
+    setAnimationExpanded(false);
+
+    if (!shouldRenderDetails) {
       return;
     }
 
     // timer 存储收起动画结束后卸载详情内容的定时器。
     const timer = window.setTimeout(() => {
       setShouldRenderDetails(false);
-    }, 200);
+    }, 220);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [expanded]);
+  }, [expanded, shouldRenderDetails]);
 
   // openModalEditor 负责打开大编辑弹窗并初始化草稿。
   function openModalEditor() {
@@ -202,8 +238,20 @@ export default function FieldRenderer({
           <span className="mt-1 block text-xs text-text-muted">{field.description}</span>
           <span className="mt-1 block text-xs text-text-muted">范围：{field.scope}</span>
         </button>
-        {isSet && (
-          <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {showSaveButton && (
+            <button
+              aria-label={`保存${field.title}`}
+              className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${saveButtonClass}`}
+              disabled={saveDisabled}
+              type="button"
+              onClick={onSave}
+            >
+              {saving ? "保存中…" : "保存"}
+            </button>
+          )}
+          {isSet && (
+            <>
             <button
               className="text-xs text-text-muted hover:text-text-main"
               type="button"
@@ -218,22 +266,24 @@ export default function FieldRenderer({
             >
               {hidden ? `取消隐藏${field.title}` : `隐藏${field.title}`}
             </button>
-          </div>
-        )}
-        {!isSet && (
-          <button
-            className="shrink-0 text-xs text-text-muted hover:text-text-main"
-            type="button"
-            onClick={onToggleHidden}
-          >
-            {hidden ? `取消隐藏${field.title}` : `隐藏${field.title}`}
-          </button>
-        )}
+            </>
+          )}
+          {!isSet && (
+            <button
+              className="text-xs text-text-muted hover:text-text-main"
+              type="button"
+              onClick={onToggleHidden}
+            >
+              {hidden ? `取消隐藏${field.title}` : `隐藏${field.title}`}
+            </button>
+          )}
+        </div>
       </div>
 
       {shouldRenderDetails && (
         <div
           data-expanded={expanded ? "true" : "false"}
+          data-animation-state={animationState}
           data-testid={`field-details-${detailsDomId}`}
           className={detailsClass}
         >

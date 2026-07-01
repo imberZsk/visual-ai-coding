@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfigFileSpec } from "../config";
 import { CODEX_CONFIG_SCHEMA } from "../config/codexConfigSchema";
 import type { VisualConfigSchema } from "./visual-config/schemaTypes";
@@ -129,6 +130,7 @@ custom_flag = { enabled = true, level = 2 }
 
 describe("VisualConfigEditor", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     invokeMock.mockReset();
     updatePrefsMock.mockReset();
     prefsMock = {
@@ -155,6 +157,10 @@ describe("VisualConfigEditor", () => {
     });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders known fields and unknown advanced fields", async () => {
     render(<VisualConfigEditor spec={spec} schema={schema} />);
 
@@ -178,8 +184,34 @@ describe("VisualConfigEditor", () => {
     // detailsRegion 存储字段详情展开区域，用于确认折叠动画结构存在。
     const detailsRegion = screen.getByTestId("field-details-model");
     expect(detailsRegion).toHaveAttribute("data-expanded", "true");
+    await waitFor(() => {
+      expect(detailsRegion).toHaveAttribute("data-animation-state", "open");
+    });
     expect(detailsRegion).toHaveClass("grid-rows-[1fr]");
     expect(detailsRegion).toHaveClass("transition-[grid-template-rows,opacity,margin-top]");
+  });
+
+  it("starts field expansion from a collapsed animation state before opening", async () => {
+    render(<VisualConfigEditor spec={spec} schema={schema} />);
+
+    expect(await screen.findByText("默认模型")).toBeInTheDocument();
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    });
+
+    // detailsRegion 存储刚挂载的详情区域，用于确认展开动画从折叠态起步。
+    const detailsRegion = screen.getByTestId("field-details-model");
+    expect(detailsRegion).toHaveAttribute("data-animation-state", "opening");
+    expect(detailsRegion).toHaveClass("grid-rows-[0fr]");
+
+    await act(async () => {
+      vi.advanceTimersByTime(20);
+    });
+
+    expect(detailsRegion).toHaveAttribute("data-animation-state", "open");
+    expect(detailsRegion).toHaveClass("grid-rows-[1fr]");
   });
 
   it("opens complex object fields in a large modal editor and applies edits", async () => {
@@ -371,6 +403,51 @@ describe("VisualConfigEditor", () => {
     expect(content).toContain('"customFutureFlag": true');
   });
 
+  it("saves one visual field without committing other unsaved fields", async () => {
+    invokeMock.mockResolvedValueOnce({
+      id: "claude-settings",
+      title: "settings.json",
+      path: "/Users/test/.claude/settings.json",
+      format: "json",
+      content: JSON.stringify(
+        { model: "opus", autoUpdates: false, customFutureFlag: true },
+        null,
+        2
+      ),
+      exists: true,
+      readonly: false,
+    });
+
+    render(<VisualConfigEditor spec={spec} schema={schema} />);
+
+    expect(await screen.findByText("默认模型")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    fireEvent.change(screen.getByDisplayValue("opus"), { target: { value: "sonnet" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "自动更新 配置项" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "打开" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "保存默认模型" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("save_config_file", {
+        path: "/Users/test/.claude/settings.json",
+        content: expect.stringContaining('"model": "sonnet"'),
+        format: "json",
+      });
+    });
+
+    // saveCall 存储字段保存命令的调用参数。
+    const saveCall = invokeMock.mock.calls.find((call) => call[0] === "save_config_file");
+    // content 存储字段保存时生成的配置文本。
+    const content = saveCall?.[1]?.content as string;
+    expect(content).toContain('"autoUpdates": false');
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "保存默认模型" })).toBeDisabled();
+    });
+    expect(screen.getByRole("button", { name: "保存自动更新" })).not.toBeDisabled();
+  });
+
   it("keeps the edited field open and enables saving again after a successful save", async () => {
     invokeMock.mockImplementation(async (command: string, args?: { content?: string }) => {
       if (command === "read_config_file") {
@@ -459,6 +536,86 @@ describe("VisualConfigEditor", () => {
     expect(
       screen.getByRole("option", { name: "custom-local-model（当前值）" })
     ).toBeInTheDocument();
+  });
+
+  it("does not clip model select popovers inside expanded field details", async () => {
+    // selectSchema 存储带模型下拉框的 schema，用于验证真实 select 的展开容器样式。
+    const selectSchema: VisualConfigSchema = {
+      ...schema,
+      groups: [
+        {
+          ...schema.groups[0],
+          fields: schema.groups[0].fields.map((field) =>
+            field.path === "model"
+              ? {
+                  ...field,
+                  control: "select",
+                  options: [{ value: "opus", label: "opus" }],
+                }
+              : field
+          ),
+        },
+      ],
+    };
+
+    render(<VisualConfigEditor spec={spec} schema={selectSchema} />);
+
+    expect(await screen.findByText("默认模型")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+
+    // modelSelect 存储默认模型下拉选择控件。
+    const modelSelect = screen.getByRole("combobox");
+    // detailsRegion 存储展开后的字段详情区域。
+    const detailsRegion = screen.getByTestId("field-details-model");
+    // detailsContent 存储 select 所在的详情内容容器。
+    const detailsContent = modelSelect.parentElement;
+
+    await waitFor(() => {
+      expect(detailsRegion).toHaveAttribute("data-animation-state", "open");
+    });
+    expect(detailsRegion).toHaveClass("overflow-visible");
+    expect(detailsContent).toHaveClass("overflow-visible");
+  });
+
+  it("lets users choose a model from the dropdown and save it", async () => {
+    // user 存储模拟真实点击和下拉选择的用户事件工具。
+    const user = userEvent.setup();
+    // selectSchema 存储模型字段为下拉控件的 schema。
+    const selectSchema: VisualConfigSchema = {
+      ...schema,
+      groups: [
+        {
+          ...schema.groups[0],
+          fields: schema.groups[0].fields.map((field) =>
+            field.path === "model"
+              ? {
+                  ...field,
+                  control: "select",
+                  options: [
+                    { value: "opus", label: "opus" },
+                    { value: "sonnet5", label: "sonnet5" },
+                  ],
+                }
+              : field
+          ),
+        },
+      ],
+    };
+
+    render(<VisualConfigEditor spec={spec} schema={selectSchema} />);
+
+    expect(await screen.findByText("默认模型")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    await user.selectOptions(screen.getByRole("combobox"), "sonnet5");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("save_config_file", {
+        path: "/Users/test/.claude/settings.json",
+        content: expect.stringContaining('"model": "sonnet5"'),
+        format: "json",
+      });
+    });
   });
 
   it("persists manually hidden fields and shows them only after expanding more config", async () => {

@@ -62,6 +62,36 @@ function serializeConfigContent(
   return TOML.stringify(value);
 }
 
+// 将单个字段值写入或删除到配置对象副本中。
+// source 参数存储原始配置对象，path 参数存储字段路径，value 参数存储待写入的新值。
+function writeFieldValue(
+  source: Record<string, unknown>,
+  path: string,
+  value: unknown
+): Record<string, unknown> {
+  return value === undefined
+    ? deleteValueAtPath(source, path)
+    : setValueAtPath(source, path, value);
+}
+
+// 判断两个配置字段值在结构上是否一致。
+// left 参数存储当前草稿值，right 参数存储最近保存的基线值。
+function areFieldValuesEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) {
+    return true;
+  }
+
+  try {
+    // leftText 存储左侧值的 JSON 表示，用于比较数组和对象字段。
+    const leftText = JSON.stringify(left);
+    // rightText 存储右侧值的 JSON 表示，用于比较数组和对象字段。
+    const rightText = JSON.stringify(right);
+    return leftText === rightText;
+  } catch {
+    return false;
+  }
+}
+
 // 将未知字段值格式化为适合只读展示的文本。
 // value 参数存储未知字段当前值，供高级字段区域展示实际内容。
 function formatUnknownFieldValue(value: unknown): string {
@@ -130,6 +160,8 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   const [rawDraft, setRawDraft] = useState("");
   // configDraft 存储可视化表单对应的配置对象。
   const [configDraft, setConfigDraft] = useState<Record<string, unknown>>({});
+  // baselineConfigDraft 存储最近一次已保存到磁盘的结构化配置，用于判断单个字段是否有未保存改动。
+  const [baselineConfigDraft, setBaselineConfigDraft] = useState<Record<string, unknown>>({});
   // baselineRawText 存储最近一次成功加载后的原始文本基线，用于 raw 模式判断是否真的修改过。
   const [baselineRawText, setBaselineRawText] = useState("");
   // baselineVisualText 存储最近一次成功加载后的规范化文本基线，用于 visual 模式避免因格式化差异误报未保存。
@@ -138,6 +170,8 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   const [activeView, setActiveView] = useState<"visual" | "raw">("visual");
   // saving 标记当前是否正在保存。
   const [saving, setSaving] = useState(false);
+  // savingFieldPath 存储当前正在单独保存的字段路径，空值表示没有字段级保存进行中。
+  const [savingFieldPath, setSavingFieldPath] = useState<string | null>(null);
   // loading 标记当前是否正在读取文件。
   const [loading, setLoading] = useState(true);
   // message 存储操作成功或失败提示。
@@ -208,12 +242,14 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
         const parsedConfig = applyParsedDraft(loadedFile.content);
         // normalizedVisualText 存储按当前格式规范化后的文本，避免 visual 模式把纯格式差异误判成脏数据。
         const normalizedVisualText = serializeConfigContent(parsedConfig, schema.format);
+        setBaselineConfigDraft(parsedConfig);
         setBaselineVisualText(normalizedVisualText);
         setActiveView("visual");
       } catch (error) {
         // 读取到损坏配置时，业务上优先回退 raw 模式，让用户至少还能直接修文本。
         setParseError(String(error));
         setConfigDraft({});
+        setBaselineConfigDraft({});
         setBaselineVisualText("");
         setActiveView("raw");
       }
@@ -261,10 +297,7 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   function handleFieldChange(path: string, value: unknown) {
     setConfigDraft((currentConfig) => {
       // nextConfig 存储写入单个字段后的新配置对象。
-      const nextConfig =
-        value === undefined
-          ? deleteValueAtPath(currentConfig, path)
-          : setValueAtPath(currentConfig, path, value);
+      const nextConfig = writeFieldValue(currentConfig, path, value);
       setRawDraft(serializeConfigContent(nextConfig, schema.format));
       return nextConfig;
     });
@@ -275,7 +308,7 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   function handleFieldUnset(path: string) {
     setConfigDraft((currentConfig) => {
       // nextConfig 存储删除字段后的新配置对象。
-      const nextConfig = deleteValueAtPath(currentConfig, path);
+      const nextConfig = writeFieldValue(currentConfig, path, undefined);
       setRawDraft(serializeConfigContent(nextConfig, schema.format));
       return nextConfig;
     });
@@ -348,6 +381,16 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
     void load();
   }
 
+  // isFieldDirty 判断单个字段是否相对最近保存的磁盘基线发生变化。
+  // path 参数存储待检查的字段路径。
+  function isFieldDirty(path: string): boolean {
+    // currentValue 存储当前可视化草稿中的字段值。
+    const currentValue = getValueAtPath(configDraft, path);
+    // savedValue 存储最近一次已保存到磁盘的字段值。
+    const savedValue = getValueAtPath(baselineConfigDraft, path);
+    return !areFieldValuesEqual(currentValue, savedValue);
+  }
+
   // renderSortButton 负责渲染字段排序切换按钮。
   // sortOrder 参数存储按钮对应的排序模式，label 参数存储按钮展示文案。
   function renderSortButton(sortOrder: FieldSortOrder, label: string) {
@@ -376,6 +419,13 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   function renderField(fieldState: FieldRenderState) {
     // fieldHidden 标记当前字段是否被用户手动隐藏到更多配置区域。
     const fieldHidden = hiddenFieldPathSet.has(fieldState.field.path);
+    // fieldDirty 标记当前字段是否有未保存改动。
+    const fieldDirty = isFieldDirty(fieldState.field.path);
+    // fieldSaving 标记当前字段是否正在单独保存。
+    const fieldSaving = savingFieldPath === fieldState.field.path;
+    // fieldSaveDisabled 标记当前字段保存按钮是否应禁用。
+    const fieldSaveDisabled =
+      !fieldDirty || loading || saving || savingFieldPath !== null || spec.readonly;
 
     return (
       <FieldRenderer
@@ -389,6 +439,12 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
         onToggle={() => toggleFieldExpanded(fieldState.field.path)}
         hidden={fieldHidden}
         onToggleHidden={() => toggleFieldHidden(fieldState.field.path)}
+        showSaveButton={!spec.readonly}
+        saveDisabled={fieldSaveDisabled}
+        saving={fieldSaving}
+        onSave={() => {
+          void handleFieldSave(fieldState.field.path, fieldState.field.title);
+        }}
       />
     );
   }
@@ -429,6 +485,7 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
         // normalizedSavedText 存储刚保存内容按当前格式重新序列化后的文本基线。
         const normalizedSavedText = serializeConfigContent(savedConfig, schema.format);
         setConfigDraft(savedConfig);
+        setBaselineConfigDraft(savedConfig);
         setBaselineVisualText(normalizedSavedText);
         setParseError(null);
       } catch (error) {
@@ -441,6 +498,36 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
       setMessage({ type: "err", text: String(error) });
     } finally {
       setSaving(false);
+    }
+  }
+
+  // handleFieldSave 负责只保存单个可视化字段，并保留其他字段的未保存草稿状态。
+  // path 参数存储要保存的字段路径，title 参数存储字段标题用于提示用户保存结果。
+  async function handleFieldSave(path: string, title: string) {
+    if (!file || spec.readonly || saving || savingFieldPath !== null) {
+      return;
+    }
+
+    // fieldValue 存储当前草稿里要写入磁盘的单字段值。
+    const fieldValue = getValueAtPath(configDraft, path);
+    // nextSavedConfig 存储只合并当前字段后的磁盘目标配置，避免误提交其他未保存字段。
+    const nextSavedConfig = writeFieldValue(baselineConfigDraft, path, fieldValue);
+    // content 存储本次字段级保存实际写回磁盘的完整配置文本。
+    const content = serializeConfigContent(nextSavedConfig, schema.format);
+
+    setSavingFieldPath(path);
+    setMessage(null);
+
+    try {
+      await saveConfigFile(file.path, content, file.format);
+      setBaselineConfigDraft(nextSavedConfig);
+      setBaselineRawText(content);
+      setBaselineVisualText(content);
+      setMessage({ type: "ok", text: `已保存${title}` });
+    } catch (error) {
+      setMessage({ type: "err", text: String(error) });
+    } finally {
+      setSavingFieldPath(null);
     }
   }
 
@@ -506,7 +593,11 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
             原始文本
           </Button>
           {!spec.readonly && (
-            <Button onClick={handleSave} variant="primary" disabled={saving || !dirty}>
+            <Button
+              onClick={handleSave}
+              variant="primary"
+              disabled={saving || savingFieldPath !== null || !dirty}
+            >
               {saving ? "保存中…" : "保存"}
             </Button>
           )}
