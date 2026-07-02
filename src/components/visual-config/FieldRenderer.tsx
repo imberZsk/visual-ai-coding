@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Badge } from "../ui";
+import { Badge, LoadingIcon } from "../ui";
+import ClaudeOutputStyleField from "./ClaudeOutputStyleField";
 import type { VisualConfigField } from "./schemaTypes";
 
 interface FieldRendererProps {
@@ -12,6 +13,7 @@ interface FieldRendererProps {
   onToggle: () => void; // onToggle 用于切换当前字段的收起或展开状态。
   hidden: boolean; // hidden 标记该字段是否被用户手动隐藏到更多配置区域。
   onToggleHidden: () => void; // onToggleHidden 用于切换该字段的手动隐藏状态。
+  home: string; // home 存储当前工具配置根目录，供需要目录上下文的专用控件使用。
   showSaveButton: boolean; // showSaveButton 标记当前字段是否需要展示就地保存按钮。
   saveDisabled: boolean; // saveDisabled 标记当前字段保存按钮是否禁用。
   saving: boolean; // saving 标记当前字段是否正在保存。
@@ -40,6 +42,22 @@ function toJsonDraft(value: unknown): string {
 // control 参数存储字段控件类型。
 function isObjectControl(control: VisualConfigField["control"]): boolean {
   return control === "json-object" || control === "toml-object";
+}
+
+// 将字段默认值格式化为便于用户阅读的文本。
+// value 参数存储 schema 中声明的官方默认值，可能是布尔、数字、字符串、数组或对象。
+function formatDefaultValueText(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "boolean" || typeof value === "number") {
+    return String(value);
+  }
+
+  // jsonText 存储对象、数组等复合默认值序列化后的文本，供只读展示。
+  const jsonText = JSON.stringify(value);
+  return jsonText ?? String(value);
 }
 
 // 判断当前字段是否使用 JSON textarea 控件。
@@ -72,6 +90,7 @@ export default function FieldRenderer({
   onToggle,
   hidden,
   onToggleHidden,
+  home,
   showSaveButton,
   saveDisabled,
   saving,
@@ -229,6 +248,9 @@ export default function FieldRenderer({
               }`}
             />
             <span className="text-sm font-medium text-text-main">{field.title}</span>
+            <span className="rounded-md bg-border/50 px-1.5 py-0.5 font-mono text-xs text-text-muted">
+              {field.path}
+            </span>
             <Badge tone={isSet ? "success" : "neutral"}>{isSet ? "已设置" : "未设置"}</Badge>
             {field.risk !== "normal" && (
               <Badge tone={field.risk === "danger" ? "warning" : "info"}>{field.risk}</Badge>
@@ -237,16 +259,22 @@ export default function FieldRenderer({
           </span>
           <span className="mt-1 block text-xs text-text-muted">{field.description}</span>
           <span className="mt-1 block text-xs text-text-muted">范围：{field.scope}</span>
+          {field.defaultValue !== undefined && (
+            <span className="mt-1 block text-xs text-text-muted">
+              默认值：{formatDefaultValueText(field.defaultValue)}
+            </span>
+          )}
         </button>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {showSaveButton && (
             <button
               aria-label={`保存${field.title}`}
-              className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${saveButtonClass}`}
+              className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${saveButtonClass}`}
               disabled={saveDisabled}
               type="button"
               onClick={onSave}
             >
+              {saving && <LoadingIcon className="h-3 w-3" />}
               {saving ? "保存中…" : "保存"}
             </button>
           )}
@@ -327,6 +355,14 @@ export default function FieldRenderer({
                 className="w-full rounded-lg border border-border bg-panel px-3 py-2 text-sm text-text-main outline-none focus:border-accent"
                 value={valueText}
                 onChange={(event) => onChange(event.target.value)}
+              />
+            )}
+
+            {field.control === "claude-output-style" && (
+              <ClaudeOutputStyleField
+                value={valueText}
+                claudeHome={home}
+                onChange={(nextValue) => onChange(nextValue)}
               />
             )}
 

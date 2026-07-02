@@ -1,5 +1,6 @@
 // 顶部导航栏：页签切换 + 主题快速切换，布局参考 visual-worktree
-import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { CloseOutlined, DesktopOutlined, MoonOutlined, SettingOutlined, SunOutlined } from "@ant-design/icons";
+import { useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useAppStore } from "../store";
 import { NAV_ITEMS } from "../config";
 import { SettingsContent } from "../pages/SettingsPage";
@@ -7,11 +8,11 @@ import { SettingsContent } from "../pages/SettingsPage";
 // 主题模式循环顺序：light → dark → system
 const THEME_CYCLE = ["light", "dark", "system"] as const;
 
-// 主题模式对应的纯图标。
-const THEME_ICON: Record<string, string> = {
-  light: "☀",
-  dark: "☾",
-  system: "⊙",
+// 主题模式对应的 Ant Design 图标。
+const THEME_ICON: Record<string, ReactNode> = {
+  light: <SunOutlined aria-hidden="true" />,
+  dark: <MoonOutlined aria-hidden="true" />,
+  system: <DesktopOutlined aria-hidden="true" />,
 };
 
 // 下一主题模式对应的无障碍提示。
@@ -147,13 +148,13 @@ export default function Sidebar() {
             title={NEXT_THEME_LABEL[theme] || NEXT_THEME_LABEL.system}
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-base text-text-main transition-colors hover:bg-sidebar"
           >
-            <span aria-hidden="true">{THEME_ICON[theme] || THEME_ICON.system}</span>
+            {THEME_ICON[theme] || THEME_ICON.system}
           </button>
           <button
             onClick={openSettings}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 text-sm text-text-main transition-colors hover:bg-sidebar"
           >
-            <span aria-hidden="true">⚙</span>
+            <SettingOutlined aria-hidden="true" />
             <span>设置</span>
           </button>
         </div>
@@ -177,7 +178,7 @@ export default function Sidebar() {
                 title="关闭设置"
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text-main"
               >
-                <span aria-hidden="true">×</span>
+                <CloseOutlined aria-hidden="true" />
               </button>
             </div>
             <div className="p-5">

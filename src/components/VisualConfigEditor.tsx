@@ -10,7 +10,7 @@ import {
   listUnknownTopLevelKeys,
   setValueAtPath,
 } from "../utils/configPath";
-import { Badge, Button, Card } from "./ui";
+import { Badge, Button, Card, LoadingIcon } from "./ui";
 import FieldRenderer from "./visual-config/FieldRenderer";
 import type { VisualConfigField, VisualConfigSchema } from "./visual-config/schemaTypes";
 
@@ -178,8 +178,8 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   // parseError 存储当前 raw 内容无法解析为 schema 格式时的错误信息。
   const [parseError, setParseError] = useState<string | null>(null);
-  // expandedFieldPaths 存储当前已展开的字段路径集合，默认空集合表示所有字段收起。
-  const [expandedFieldPaths, setExpandedFieldPaths] = useState<Set<string>>(() => new Set());
+  // expandedFieldPath 存储当前唯一展开的字段路径，null 表示所有字段收起；同一时刻只允许展开一项，专注单个配置。
+  const [expandedFieldPath, setExpandedFieldPath] = useState<string | null>(null);
   // showMoreFields 标记是否展示低频、敏感或复杂的未设置字段。
   const [showMoreFields, setShowMoreFields] = useState(false);
   // showUnknownFields 标记是否展示 schema 尚未覆盖的高级字段。
@@ -226,7 +226,7 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   async function load() {
     setLoading(true);
     setMessage(null);
-    setExpandedFieldPaths(new Set());
+    setExpandedFieldPath(null);
     setShowMoreFields(false);
     setShowUnknownFields(false);
 
@@ -314,21 +314,11 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
     });
   }
 
-  // toggleFieldExpanded 负责切换单个配置项的折叠状态。
+  // toggleFieldExpanded 负责切换单个配置项的展开状态；WHY：产品要求同一时刻只专注一项配置，
+  // 所以点击已展开项时收起，点击其他项时会自动收起前一项并只展开当前项。
   // path 参数存储需要切换的字段路径。
   function toggleFieldExpanded(path: string) {
-    setExpandedFieldPaths((currentPaths) => {
-      // nextPaths 存储切换后的展开字段路径集合。
-      const nextPaths = new Set(currentPaths);
-
-      if (nextPaths.has(path)) {
-        nextPaths.delete(path);
-      } else {
-        nextPaths.add(path);
-      }
-
-      return nextPaths;
-    });
+    setExpandedFieldPath((currentPath) => (currentPath === path ? null : path));
   }
 
   // toggleFieldHidden 负责把字段移入或移出“更多配置”，并持久化到应用偏好。
@@ -433,12 +423,13 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
         field={fieldState.field}
         value={fieldState.value}
         isSet={fieldState.isSet}
-        expanded={expandedFieldPaths.has(fieldState.field.path)}
+        expanded={expandedFieldPath === fieldState.field.path}
         onChange={(value) => handleFieldChange(fieldState.field.path, value)}
         onUnset={() => handleFieldUnset(fieldState.field.path)}
         onToggle={() => toggleFieldExpanded(fieldState.field.path)}
         hidden={fieldHidden}
         onToggleHidden={() => toggleFieldHidden(fieldState.field.path)}
+        home={home}
         showSaveButton={!spec.readonly}
         saveDisabled={fieldSaveDisabled}
         saving={fieldSaving}
@@ -596,16 +587,20 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
             <Button
               onClick={handleSave}
               variant="primary"
-              disabled={saving || savingFieldPath !== null || !dirty}
+              disabled={savingFieldPath !== null || !dirty}
+              loading={saving}
             >
-              {saving ? "保存中…" : "保存"}
+              保存
             </Button>
           )}
         </div>
       </div>
 
       {loading ? (
-        <div className="py-8 text-center text-sm text-text-muted">加载中…</div>
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-text-muted">
+          <LoadingIcon className="h-3.5 w-3.5" />
+          <span>加载中…</span>
+        </div>
       ) : parseError && activeView === "raw" ? (
         <div>
           <div className="mb-2">

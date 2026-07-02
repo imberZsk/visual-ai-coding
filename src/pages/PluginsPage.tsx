@@ -66,6 +66,43 @@ function pluginUpdateKey(tool: "claude" | "codex", plugin: ToolPluginInfo): stri
   return [tool, plugin.id, plugin.scope, plugin.install_path].join("::");
 }
 
+// formatPluginLastUpdated 将 CLI 返回的原始更新时间转换为中国时区的中文展示文本。
+// lastUpdated 为后端透传的最近更新时间，通常是 ISO 字符串。
+function formatPluginLastUpdated(lastUpdated: string): string {
+  // trimmed 存储去除首尾空白后的原始更新时间。
+  const trimmed = lastUpdated.trim();
+
+  if (!trimmed) {
+    return "—";
+  }
+
+  // date 存储根据 CLI 原始时间解析出的绝对时间。
+  const date = new Date(trimmed);
+
+  if (Number.isNaN(date.getTime())) {
+    return trimmed;
+  }
+
+  // parts 存储中国时区拆分后的时间片段，避免不同浏览器直接 format 时标点不一致。
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  // values 存储时间片段类型到展示值的映射。
+  const values = parts.reduce<Record<string, string>>((accumulator, part) => {
+    accumulator[part.type] = part.value;
+    return accumulator;
+  }, {});
+
+  return `${values.year}年${values.month}月${values.day}日 ${values.hour}:${values.minute}:${values.second}`;
+}
+
 // 渲染单个工具的插件更新区块。
 // title 为区块标题，state 为该工具的检查结果，onRefresh / onUpdate 为交互回调。
 function PluginToolSection({
@@ -108,54 +145,59 @@ function PluginToolSection({
         <EmptyState text="未发现已安装插件" />
       ) : (
         <div className="space-y-3">
-          {state.result.plugins.map((plugin) => (
-            <Card
-              key={`${state.result?.tool}-${plugin.id}-${plugin.scope}-${plugin.install_path}`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-text-main">{plugin.id}</span>
-                    <Badge tone="info">v{plugin.current_version || "—"}</Badge>
-                    <Badge tone={updateStatusTone(plugin.update_status)}>
-                      {updateStatusLabel(plugin.update_status)}
-                    </Badge>
-                    {plugin.scope && <Badge tone="neutral">{plugin.scope}</Badge>}
-                    <Badge tone={plugin.enabled ? "success" : "neutral"}>
-                      {plugin.enabled ? "已启用" : "已禁用"}
-                    </Badge>
-                  </div>
-                  <div className="mt-1 space-y-0.5 text-xs text-text-muted">
-                    <div>市场：{plugin.marketplace || "—"}</div>
-                    <div>最新版本：{plugin.available_version || "—"}</div>
-                    <div>最近更新：{plugin.last_updated || "—"}</div>
-                    <div className="truncate" title={plugin.install_path}>
-                      路径：{plugin.install_path || "—"}
+          {state.result.plugins.map((plugin) => {
+            // lastUpdatedText 存储最近更新时间的中国时区中文展示结果。
+            const lastUpdatedText = formatPluginLastUpdated(plugin.last_updated);
+
+            return (
+              <Card
+                key={`${state.result?.tool}-${plugin.id}-${plugin.scope}-${plugin.install_path}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-text-main">{plugin.id}</span>
+                      <Badge tone="info">v{plugin.current_version || "—"}</Badge>
+                      <Badge tone={updateStatusTone(plugin.update_status)}>
+                        {updateStatusLabel(plugin.update_status)}
+                      </Badge>
+                      {plugin.scope && <Badge tone="neutral">{plugin.scope}</Badge>}
+                      <Badge tone={plugin.enabled ? "success" : "neutral"}>
+                        {plugin.enabled ? "已启用" : "已禁用"}
+                      </Badge>
+                    </div>
+                    <div className="mt-1 space-y-0.5 text-xs text-text-muted">
+                      <div>市场：{plugin.marketplace || "—"}</div>
+                      <div>最新版本：{plugin.available_version || "—"}</div>
+                      <div>最近更新：{lastUpdatedText}</div>
+                      <div className="truncate" title={plugin.install_path}>
+                        路径：{plugin.install_path || "—"}
+                      </div>
                     </div>
                   </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      onClick={() => {
+                        void revealInFinder(plugin.install_path).catch(console.error);
+                      }}
+                      variant="ghost"
+                      disabled={!plugin.install_path}
+                    >
+                      Finder
+                    </Button>
+                    <Button
+                      onClick={() => onUpdate(plugin)}
+                      variant="primary"
+                      disabled={plugin.update_status === "same"}
+                      loading={isPluginUpdating(plugin)}
+                    >
+                      拉取更新
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button
-                    onClick={() => {
-                      void revealInFinder(plugin.install_path).catch(console.error);
-                    }}
-                    variant="ghost"
-                    disabled={!plugin.install_path}
-                  >
-                    Finder
-                  </Button>
-                  <Button
-                    onClick={() => onUpdate(plugin)}
-                    variant="primary"
-                    disabled={plugin.update_status === "same"}
-                    loading={isPluginUpdating(plugin)}
-                  >
-                    拉取更新
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
     </section>

@@ -1,28 +1,34 @@
 {
   "name": "visual-aicoding",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.5.0",
+  "description": "可视化管理 Claude Code 与 Codex 配置、插件和工具的 Electron 桌面应用",
+  "productName": "VisualAICoding",
+  "author": "imber",
+  "main": "electron/main.js",
   "type": "module",
   "scripts": {
-    "dev-base": "node scripts/dev-or-reuse.mjs",
-    "dev": "node scripts/tauri-dev.mjs",
+    "dev:vite": "node scripts/dev-or-reuse.mjs --host 127.0.0.1 --port 5274 --strictPort",
+    "dev:electron": "wait-on tcp:5274 && cross-env NODE_ENV=development electron .",
+    "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
     "build": "tsc && vite build",
+    "build:ui": "tsc && vite build",
+    "start": "npm run build && cross-env NODE_ENV=production electron .",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "tauri:dev": "node scripts/tauri-dev.mjs",
-    "tauri:build": "tauri build",
+    "verify:boot": "npm run build && node scripts/verify-boot.mjs",
+    "dist": "npm run build && electron-builder --mac --arm64",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@tauri-apps/api": "^1.5.3",
+    "@ant-design/icons": "^5.6.1",
+    "antd": "^5.29.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "smol-toml": "^1.7.0",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^1.5.9",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -30,11 +36,44 @@
     "@types/react-dom": "^18.2.17",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.16",
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "42.5.1",
+    "electron-builder": "^25.1.8",
     "jsdom": "^29.1.1",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.3.3",
     "vite": "^5.0.8",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.imber.visual-aicoding",
+    "productName": "VisualAICoding",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "src/core/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": "arm64"
+        }
+      ],
+      "category": "public.app-category.developer-tools",
+      "identity": null
+    },
+    "dmg": {
+      "title": "VisualAICoding ${version}"
+    }
   }
 }

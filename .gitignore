@@ -7,8 +7,8 @@ dist-ssr
 *.local
 .DS_Store
 
-# Tauri
-src-tauri/target
+# Electron build output
+release
 
 # Superpowers scratch state
 .superpowers/

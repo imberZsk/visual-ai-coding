@@ -2,10 +2,10 @@ import { spawn } from "node:child_process";
 import net from "node:net";
 import { pathToFileURL } from "node:url";
 
-// DEFAULT_DEV_HOST 存储 Vite/Tauri 开发服务器默认监听地址。
+// DEFAULT_DEV_HOST 存储 Vite/Electron 开发服务器默认监听地址。
 const DEFAULT_DEV_HOST = "127.0.0.1";
-// DEFAULT_DEV_PORT 存储动态端口探测的起始 Vite 开发端口。
-const DEFAULT_DEV_PORT = 1420;
+// DEFAULT_DEV_PORT 存储 Electron 开发窗口连接的 Vite 起始端口。
+const DEFAULT_DEV_PORT = 5274;
 // HTTP_TIMEOUT_MS 存储检查已有开发服务器是否可访问的超时时间。
 const HTTP_TIMEOUT_MS = 800;
 // TCP_TIMEOUT_MS 存储检测端口占用状态的超时时间。
@@ -13,7 +13,7 @@ const TCP_TIMEOUT_MS = 500;
 // CLI_VALUE_OPTIONS 存储后面带值的 Vite 参数名，用于重写 host/port 时跳过旧值。
 const CLI_VALUE_OPTIONS = new Set(["--host", "--port"]);
 
-// buildDevServerUrl 根据 host 与 port 生成 Tauri 要连接的开发服务器地址。
+// buildDevServerUrl 根据 host 与 port 生成 Electron 要连接的开发服务器地址。
 // host 参数存储开发服务器主机名；port 参数存储开发服务器端口。
 function buildDevServerUrl(host, port) {
   return `http://${host}:${port}`;
@@ -104,7 +104,7 @@ export async function resolveDevServerAction(options) {
     return "start";
   }
 
-  // devServerUrl 存储 Tauri 即将连接的固定开发服务器 URL。
+  // devServerUrl 存储 Electron 即将连接的固定开发服务器 URL。
   const devServerUrl = buildDevServerUrl(host, port);
   // httpReachable 标记端口上的服务是否像一个可访问的 HTTP dev server。
   const httpReachable = await checkHttpReachable(devServerUrl);
@@ -195,7 +195,7 @@ export async function main() {
   const rawPort = cliPort || process.env.VITE_PORT || String(DEFAULT_DEV_PORT);
   // startPort 存储解析后的起始开发服务器端口。
   const startPort = Number(rawPort);
-  // exactPort 标记调用方是否要求使用显式端口，Tauri wrapper 需要保持 devPath 与 Vite 端口一致。
+  // exactPort 标记调用方是否要求使用显式端口，Electron 主进程需要保持加载地址与 Vite 端口一致。
   const exactPort = Boolean(cliPort) && hasCliFlag(rawArgs, "--strictPort");
   // port 存储最终要传给 Vite 的端口；直接运行时会从 1420 起向后寻找空闲端口。
   const port = exactPort
@@ -206,6 +206,18 @@ export async function main() {
 
   if (action === "reuse") {
     console.log(`Vite dev server already running at ${buildDevServerUrl(host, port)}; reusing it.`);
+    // WHY: 复用模式下进程必须挂起而非立即退出。
+    // concurrently -k 在任意子进程退出时会向所有其他进程发 SIGTERM；
+    // 若此处直接 return 0，dev:electron 还没完成启动就会被杀死。
+    //
+    // WHY setInterval: Node.js signal handler 本身不会延长事件循环寿命（无 ref-count）；
+    // 必须用一个真实的 active handle 阻止事件循环在 await 期间自动退出。
+    const keepAlive = setInterval(() => {}, 24 * 60 * 60 * 1000);
+    await new Promise((resolve) => {
+      process.once("SIGTERM", resolve);
+      process.once("SIGINT", resolve);
+    });
+    clearInterval(keepAlive);
     return 0;
   }
 

@@ -32,6 +32,11 @@ body,
   margin: 0;
 }
 
+/* Ant Design App 容器需要满高，保证内部 h-full loading 能按视口垂直居中 */
+.ant-app {
+  height: 100%;
+}
+
 body {
   background-color: rgb(var(--surface));
   color: rgb(var(--text-main));
@@ -53,7 +58,7 @@ body {
   background: transparent;
 }
 
-/* 顶部 tab 切换时，下方内容做轻微纵向位移 + 淡入，避免横向溢出触发滚动条 */
+/* 顶部 tab 切换时，下方内容只做淡入，避免位置动画造成页面抖动 */
 .tab-content-enter {
   animation: tabContentEnter 0.18s ease-out;
   overflow-x: clip;
@@ -62,10 +67,8 @@ body {
 @keyframes tabContentEnter {
   from {
     opacity: 0;
-    transform: translateY(4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }

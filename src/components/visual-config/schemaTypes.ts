@@ -6,6 +6,7 @@ export type VisualConfigControl =
   | "switch"
   | "text"
   | "number"
+  | "claude-output-style"
   | "select"
   | "string-list"
   | "json-value"

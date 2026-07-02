@@ -29,6 +29,25 @@ export interface DirEntryInfo {
   size: number; // 字节大小
 }
 
+// Claude output style 来源类型，对应 Rust ClaudeOutputStyleInfo.kind
+export type ClaudeOutputStyleKind = "builtin" | "custom";
+
+// Claude output style 信息，对应 Rust ClaudeOutputStyleInfo
+export interface ClaudeOutputStyleInfo {
+  name: string; // 风格名称，对应 settings.json 中 outputStyle 的值
+  kind: ClaudeOutputStyleKind; // 风格来源：builtin / custom
+  path: string; // 自定义风格 Markdown 文件路径，内置风格为空字符串
+  description: string; // 风格说明
+}
+
+// Claude output style 列表结果，对应 Rust ClaudeOutputStyleListResult
+export interface ClaudeOutputStyleListResult {
+  directory: string; // 自定义 output-styles 目录绝对路径
+  exists: boolean; // 自定义 output-styles 目录是否存在
+  styles: ClaudeOutputStyleInfo[]; // 内置与自定义 output style 候选项
+  diagnostics: string; // 扫描自定义风格时产生的提示
+}
+
 // 已安装插件，对应 Rust PluginInfo
 export interface PluginInfo {
   name: string; // 插件全名
@@ -105,4 +124,25 @@ export interface SkillInfo {
 export interface SkillListResult {
   skills: SkillInfo[]; // 扫描到的可用 Skill 列表
   diagnostics: string; // 扫描诊断信息，如缺失目录或读取失败
+}
+
+// OfficialSettingField 描述官方文档中识别出的一个配置字段。
+export interface OfficialSettingField {
+  path: string; // path 存储配置字段真实英文 key 或点分路径
+}
+
+// OfficialSettingsSource 描述一个配置文件对应的官方来源与本地缓存状态。
+export interface OfficialSettingsSource {
+  id: string; // id 存储与 VisualConfigSchema.id 对齐的稳定标识
+  title: string; // title 存储设置页展示标题
+  description: string; // description 存储官方来源用途说明
+  url: string; // url 存储官方文档地址
+  cached_at: string; // cached_at 存储最近一次成功同步时间，未同步时为空
+  fields: OfficialSettingField[]; // fields 存储官方文档提取出的字段列表
+}
+
+// OfficialSettingsSyncResult 描述官方设置来源读取或同步结果。
+export interface OfficialSettingsSyncResult {
+  sources: OfficialSettingsSource[]; // sources 存储全部官方设置来源
+  diagnostics: string; // diagnostics 存储同步失败或部分失败的诊断信息
 }

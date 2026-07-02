@@ -1,10 +1,10 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PluginsPage from "./PluginsPage";
 import { useAppStore } from "../store";
 
-// invokeMock 存储 Tauri invoke 的测试替身。
+// invokeMock 存储 Electron preload API 的测试替身，保留旧 command 形状便于断言迁移前后参数一致。
 const invokeMock = vi.fn();
 
 // DeferredValue 描述测试中可手动结束的 Promise。
@@ -25,10 +25,6 @@ function createDeferred<T>(): DeferredValue<T> {
 
   return { promise, resolve: resolveDeferred };
 }
-
-vi.mock("@tauri-apps/api/tauri", () => ({
-  invoke: (...args: unknown[]) => invokeMock(...args),
-}));
 
 // createEmptyPluginToolState 创建插件区块空状态，供测试重置真实 store。
 function createEmptyPluginToolState() {
@@ -64,6 +60,19 @@ function getUpdateButtonInSection(sectionTitle: string): HTMLElement {
 
 describe("PluginsPage", () => {
   beforeEach(() => {
+    window.api = {
+      checkClaudePluginUpdates: (claudeHome: string) =>
+        invokeMock("check_claude_plugin_updates", { claudeHome }),
+      checkCodexPluginUpdates: (codexHome: string) =>
+        invokeMock("check_codex_plugin_updates", { codexHome }),
+      updateClaudePlugin: (payload: { pluginName: string; scope: string }) =>
+        invokeMock("update_claude_plugin", payload),
+      updateCodexMarketplace: (marketplaceName: string) =>
+        invokeMock("update_codex_marketplace", { marketplaceName }),
+      updateCodexPlugin: (payload: { pluginId: string; marketplace: string }) =>
+        invokeMock("update_codex_plugin", payload),
+      revealInFinder: (target: string) => invokeMock("reveal_in_finder", { target }),
+    } as Window["api"];
     useAppStore.setState({
       prefs: {
         theme: "system",
@@ -126,6 +135,7 @@ describe("PluginsPage", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.useRealTimers();
     useAppStore.setState({
       prefs: null,
@@ -169,6 +179,51 @@ describe("PluginsPage", () => {
     expect(screen.getByText("browser@openai-bundled")).toBeInTheDocument();
     expect(screen.getByText("可更新")).toBeInTheDocument();
     expect(screen.getByText("已最新")).toBeInTheDocument();
+  });
+
+  // 验证插件页会把 CLI 返回的 ISO 时间转换为中国时区中文格式，避免直接展示 T/Z 等原始标记。
+  it("formats plugin last update time in China time", () => {
+    vi.useFakeTimers();
+
+    try {
+      useAppStore.setState({
+        pluginPage: {
+          ...createEmptyPluginPageState(),
+          claude: {
+            loading: false,
+            error: "",
+            result: {
+              tool: "claude",
+              raw_output: "{}",
+              diagnostics: "",
+              plugins: [
+                {
+                  id: "superpowers@superpowers-dev",
+                  name: "superpowers",
+                  marketplace: "superpowers-dev",
+                  current_version: "6.0.3",
+                  available_version: "6.0.4",
+                  scope: "user",
+                  enabled: true,
+                  install_path: "/tmp/superpowers",
+                  last_updated: "2026-06-29T08:10:22.693Z",
+                  update_status: "newer",
+                },
+              ],
+            },
+          },
+        },
+      });
+
+      // renderResult 存储本次渲染句柄，用于断言后主动卸载组件。
+      const renderResult = render(<PluginsPage />);
+
+      expect(screen.getByText("最近更新：2026年06月29日 16:10:22")).toBeInTheDocument();
+      expect(screen.queryByText("2026-06-29T08:10:22.693Z")).not.toBeInTheDocument();
+      renderResult.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // 验证点击顶部“刷新全部”后，按钮会展示 loading 并在两类工具检查结束后恢复。
@@ -359,7 +414,7 @@ describe("PluginsPage", () => {
     // pluginCards 存储当前页面所有插件卡片，便于分别定位两个插件按钮。
     const pluginCards = screen
       .getAllByText(/@superpowers-dev/)
-      .map((node) => node.closest(".rounded-xl"));
+      .map((node) => node.closest(".ant-card"));
     // firstCard 存储第一个待更新插件的卡片。
     const firstCard = pluginCards[0] as HTMLElement;
     // secondCard 存储第二个待更新插件的卡片。

@@ -29,4 +29,15 @@ describe("initial theme paint", () => {
 
     expect(hookSource).toContain("cacheThemePreference(theme)");
   });
+
+  // 验证 Ant Design Provider 在偏好加载前也读取首屏主题缓存，避免组件和页面背景短暂错色。
+  it("uses startup theme cache before preferences finish loading", () => {
+    // entryPath 存储 React 入口文件路径。
+    const entryPath = resolve(process.cwd(), "src/main.tsx");
+    // entrySource 存储 React 入口源码，用于检查 Ant Design Provider 的首屏主题兜底。
+    const entrySource = readFileSync(entryPath, "utf8");
+
+    expect(entrySource).toContain("getStartupThemePreference()");
+    expect(entrySource).toContain("visual-aicoding.theme");
+  });
 });

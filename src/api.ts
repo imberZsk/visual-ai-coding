@@ -1,25 +1,40 @@
-// 后端命令封装层：集中所有 Tauri invoke 调用，前端组件只依赖此模块
-import { invoke } from "@tauri-apps/api/tauri";
+// 后端命令封装层：集中所有 Electron preload API 调用，前端组件只依赖此模块
 import type {
   Preferences,
   ConfigFile,
+  ClaudeOutputStyleInfo,
+  ClaudeOutputStyleListResult,
   DirEntryInfo,
   PluginInfo,
   MarketplaceInfo,
   PluginUpdateCheckResult,
   SkillListResult,
+  OfficialSettingsSyncResult,
   ToolLatestVersion,
   ToolStatus,
 } from "./types";
 
+// ElectronApi 存储 preload API 的非空类型，getElectronApi 已在运行时做缺失检查。
+type ElectronApi = NonNullable<Window["api"]>;
+
+// getElectronApi 获取 preload 暴露的受限 API；缺失时给出明确错误，便于定位启动链路问题。
+function getElectronApi(): ElectronApi {
+  // api 存储 preload 注入到 window 上的安全桥。
+  const api = window.api;
+  if (!api) {
+    throw new Error("Electron preload API 未初始化");
+  }
+  return api;
+}
+
 // 读取应用偏好（不存在时后端返回默认值并落盘）
 export function getPreferences(): Promise<Preferences> {
-  return invoke("get_preferences");
+  return getElectronApi().getPreferences();
 }
 
 // 保存应用偏好
 export function savePreferences(prefs: Preferences): Promise<void> {
-  return invoke("save_preferences", { prefs });
+  return getElectronApi().savePreferences(prefs);
 }
 
 // 读取单个配置文件内容
@@ -29,7 +44,7 @@ export function readConfigFile(
   path: string,
   readonly: boolean
 ): Promise<ConfigFile> {
-  return invoke("read_config_file", { id, title, path, readonly });
+  return getElectronApi().readConfigFile({ id, title, path, readonly });
 }
 
 // 保存配置文件（后端按 format 做语法校验）
@@ -38,24 +53,41 @@ export function saveConfigFile(
   content: string,
   format: string
 ): Promise<void> {
-  return invoke("save_config_file", { path, content, format });
+  return getElectronApi().saveConfigFile({ path, content, format });
 }
 
 // 列出目录直接子条目
 export function listDir(path: string): Promise<DirEntryInfo[]> {
-  return invoke("list_dir", { path });
+  return getElectronApi().listDir(path);
+}
+
+// 扫描 Claude 内置与自定义 output style 列表
+// claudeHome 为 Claude 配置根目录，后端据此定位 output-styles 目录。
+export function listClaudeOutputStyles(
+  claudeHome: string
+): Promise<ClaudeOutputStyleListResult> {
+  return getElectronApi().listClaudeOutputStyles(claudeHome);
+}
+
+// 创建 Claude 自定义 output style Markdown 文件
+// claudeHome 为 Claude 配置根目录，name 为 settings.json 中 outputStyle 对应的风格名。
+export function createClaudeOutputStyle(
+  claudeHome: string,
+  name: string
+): Promise<ClaudeOutputStyleInfo> {
+  return getElectronApi().createClaudeOutputStyle({ claudeHome, name });
 }
 
 // 读取 Claude 已安装插件列表
 export function listClaudePlugins(claudeHome: string): Promise<PluginInfo[]> {
-  return invoke("list_claude_plugins", { claudeHome });
+  return getElectronApi().listClaudePlugins(claudeHome);
 }
 
 // 读取 Claude 市场列表
 export function listClaudeMarketplaces(
   claudeHome: string
 ): Promise<MarketplaceInfo[]> {
-  return invoke("list_claude_marketplaces", { claudeHome });
+  return getElectronApi().listClaudeMarketplaces(claudeHome);
 }
 
 // 手动更新指定插件，返回 CLI 输出
@@ -64,14 +96,14 @@ export function updateClaudePlugin(
   pluginName: string,
   scope: string
 ): Promise<string> {
-  return invoke("update_claude_plugin", { pluginName, scope });
+  return getElectronApi().updateClaudePlugin({ pluginName, scope });
 }
 
 // 手动更新指定市场，返回 CLI 输出
 export function updateClaudeMarketplace(
   marketplaceName: string
 ): Promise<string> {
-  return invoke("update_claude_marketplace", { marketplaceName });
+  return getElectronApi().updateClaudeMarketplace(marketplaceName);
 }
 
 // 检查 Claude 插件更新状态
@@ -79,7 +111,7 @@ export function updateClaudeMarketplace(
 export function checkClaudePluginUpdates(
   claudeHome: string
 ): Promise<PluginUpdateCheckResult> {
-  return invoke("check_claude_plugin_updates", { claudeHome });
+  return getElectronApi().checkClaudePluginUpdates(claudeHome);
 }
 
 // 检查 Codex 插件更新状态
@@ -87,7 +119,7 @@ export function checkClaudePluginUpdates(
 export function checkCodexPluginUpdates(
   codexHome: string
 ): Promise<PluginUpdateCheckResult> {
-  return invoke("check_codex_plugin_updates", { codexHome });
+  return getElectronApi().checkCodexPluginUpdates(codexHome);
 }
 
 // 刷新 Codex marketplace，确保随后安装插件时拿到最新索引
@@ -95,7 +127,7 @@ export function checkCodexPluginUpdates(
 export function updateCodexMarketplace(
   marketplaceName: string
 ): Promise<string> {
-  return invoke("update_codex_marketplace", { marketplaceName });
+  return getElectronApi().updateCodexMarketplace(marketplaceName);
 }
 
 // 更新 Codex 指定插件
@@ -104,12 +136,12 @@ export function updateCodexPlugin(
   pluginId: string,
   marketplace: string
 ): Promise<string> {
-  return invoke("update_codex_plugin", { pluginId, marketplace });
+  return getElectronApi().updateCodexPlugin({ pluginId, marketplace });
 }
 
 // 探测本机 AI 工具安装状态
 export function detectTools(): Promise<ToolStatus[]> {
-  return invoke("detect_tools");
+  return getElectronApi().detectTools();
 }
 
 // 查询指定工具在 npm registry 上的最新版本
@@ -117,13 +149,13 @@ export function detectTools(): Promise<ToolStatus[]> {
 export function checkToolLatestVersion(
   toolId: string
 ): Promise<ToolLatestVersion> {
-  return invoke("check_tool_latest_version", { toolId });
+  return getElectronApi().checkToolLatestVersion(toolId);
 }
 
 // 更新指定工具 CLI 到 npm registry 最新版本
 // toolId 为工具标识，如 claude / codex。
 export function updateToolCli(toolId: string): Promise<string> {
-  return invoke("update_tool_cli", { toolId });
+  return getElectronApi().updateToolCli(toolId);
 }
 
 // 在 VSCode 打开文件/目录
@@ -131,12 +163,12 @@ export function openInVscode(
   vscodePath: string,
   target: string
 ): Promise<void> {
-  return invoke("open_in_vscode", { vscodePath, target });
+  return getElectronApi().openInVscode({ vscodePath, target });
 }
 
 // 在 Finder 中显示路径
 export function revealInFinder(target: string): Promise<void> {
-  return invoke("reveal_in_finder", { target });
+  return getElectronApi().revealInFinder(target);
 }
 
 // 扫描 Claude / Codex / Agents 可用 Skill 列表
@@ -145,5 +177,15 @@ export function listSkills(
   claudeHome: string,
   codexHome: string
 ): Promise<SkillListResult> {
-  return invoke("list_skills", { claudeHome, codexHome });
+  return getElectronApi().listSkills({ claudeHome, codexHome });
+}
+
+// 读取官方设置来源缓存
+export function getOfficialSettingsSources(): Promise<OfficialSettingsSyncResult> {
+  return getElectronApi().getOfficialSettingsSources();
+}
+
+// 从官方文档同步最新配置字段来源
+export function updateOfficialSettingsSources(): Promise<OfficialSettingsSyncResult> {
+  return getElectronApi().updateOfficialSettingsSources();
 }

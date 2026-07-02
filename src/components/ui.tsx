@@ -1,19 +1,29 @@
-// 共享 UI 原语：统一卡片、区块标题、按钮、徽章、提示等基础组件，保证全应用风格一致
+// 共享 UI 原语：以 Ant Design 为底座，统一卡片、按钮、徽章、空状态与 loading 风格
+import {
+  Button as AntButton,
+  Card as AntCard,
+  Empty,
+  Spin,
+  Tag,
+  type ButtonProps as AntButtonProps,
+} from "antd";
 import type { ReactNode } from "react";
 
-// LoadingIcon 渲染与 visual-worktree Spin 类似的旋转加载图标。
+// LoadingIcon 渲染与 visual-worktree 一致的 Ant Design Spin 加载图标。
 // className 为调用方传入的额外尺寸或颜色样式。
 export function LoadingIcon({ className = "" }: { className?: string }) {
   return (
     <span
       data-testid="loading-icon"
       aria-hidden="true"
-      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent ${className}`}
-    />
+      className={`inline-flex items-center justify-center leading-none ${className}`}
+    >
+      <Spin size="small" />
+    </span>
   );
 }
 
-// 卡片容器：面板背景 + 边框 + 圆角，承载分组内容
+// 卡片容器：复用 Ant Design Card 的边框、内边距与暗色主题适配。
 export function Card({
   children,
   className = "",
@@ -21,13 +31,7 @@ export function Card({
   children: ReactNode; // 卡片内容
   className?: string; // 额外样式类
 }) {
-  return (
-    <div
-      className={`rounded-xl border border-border bg-panel p-4 ${className}`}
-    >
-      {children}
-    </div>
-  );
+  return <AntCard size="small" className={className}>{children}</AntCard>;
 }
 
 // 页面标题区：主标题 + 可选副标题，统一页面顶部留白
@@ -63,7 +67,21 @@ export function SectionTitle({ children }: { children: ReactNode }) {
 // 按钮变体类型：primary 主操作 / default 次操作 / ghost 文本按钮
 type ButtonVariant = "primary" | "default" | "ghost";
 
-// 通用按钮：统一三种变体样式与禁用态
+// getAntButtonType 将项目历史按钮变体映射为 Ant Design 按钮类型。
+// variant 参数存储项目内按钮变体。
+function getAntButtonType(variant: ButtonVariant): AntButtonProps["type"] {
+  if (variant === "primary") {
+    return "primary";
+  }
+
+  if (variant === "ghost") {
+    return "text";
+  }
+
+  return "default";
+}
+
+// 通用按钮：统一使用 Ant Design Button，保留项目既有 Button API。
 export function Button({
   children,
   onClick,
@@ -83,32 +101,33 @@ export function Button({
   title?: string; // 悬浮提示
   ariaLabel?: string; // 可访问名称，供图标按钮等无可见文字的按钮使用
 }) {
-  // base 为所有变体共用的基础样式
-  const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
-  // variantClass 根据变体决定配色
-  const variantClass =
-    variant === "primary"
-      ? "bg-accent text-white hover:opacity-90"
-      : variant === "ghost"
-      ? "text-text-muted hover:text-text-main hover:bg-surface"
-      : "border border-border text-text-main hover:bg-surface";
+  // buttonType 存储映射后的 Ant Design 按钮类型。
+  const buttonType = getAntButtonType(variant);
+  // buttonClassName 存储调用方样式与 Ant Design loading 类，避免内置 loading 动画污染按钮无障碍名称。
+  const buttonClassName = [className, loading ? "ant-btn-loading" : ""]
+    .filter(Boolean)
+    .join(" ");
+  // loadingIcon 存储 loading 状态下展示的 Ant Design Spin 图标。
+  const loadingIcon = loading ? <LoadingIcon /> : undefined;
+
   return (
-    <button
+    <AntButton
+      type={buttonType}
+      autoInsertSpace={false}
       onClick={onClick}
       disabled={disabled || loading}
+      icon={loadingIcon}
       aria-busy={loading}
       aria-label={ariaLabel}
       title={title}
-      className={`${base} ${variantClass} ${className}`}
+      className={buttonClassName}
     >
-      {loading && <LoadingIcon />}
       {children}
-    </button>
+    </AntButton>
   );
 }
 
-// 徽章：展示状态/标签，支持语义色
+// 徽章：复用 Ant Design Tag 展示状态/标签，支持项目语义色调。
 export function Badge({
   children,
   tone = "neutral",
@@ -116,29 +135,24 @@ export function Badge({
   children: ReactNode; // 徽章文本
   tone?: "neutral" | "success" | "warning" | "info"; // 语义色调
 }) {
-  // toneClass 根据色调决定背景与文字色
-  const toneClass =
+  // toneColor 存储 Ant Design Tag 的语义色。
+  const toneColor =
     tone === "success"
-      ? "bg-green-500/15 text-green-500"
+      ? "success"
       : tone === "warning"
-      ? "bg-amber-500/15 text-amber-500"
+      ? "warning"
       : tone === "info"
-      ? "bg-accent/15 text-accent"
-      : "bg-border/60 text-text-muted";
-  return (
-    <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${toneClass}`}
-    >
-      {children}
-    </span>
-  );
+      ? "processing"
+      : "default";
+
+  return <Tag color={toneColor} className="m-0">{children}</Tag>;
 }
 
-// 空状态占位：列表/数据为空时展示
+// 空状态占位：复用 Ant Design Empty，统一列表/数据为空时的视觉表达。
 export function EmptyState({ text }: { text: string }) {
   return (
-    <div className="flex items-center justify-center rounded-lg border border-dashed border-border py-10 text-sm text-text-muted">
-      {text}
+    <div className="rounded-lg border border-dashed border-border py-8">
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={text} />
     </div>
   );
 }

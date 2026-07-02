@@ -220,6 +220,7 @@ describe("App tab loading", () => {
 
     // themeButton 存储顶部主题快捷切换按钮。
     const themeButton = screen.getByRole("button", { name: "切换到浅色主题" });
+    expect(themeButton.querySelector(".anticon")).toBeInTheDocument();
     expect(themeButton).not.toHaveTextContent("浅色");
     expect(themeButton).not.toHaveTextContent("深色");
     expect(themeButton).not.toHaveTextContent("跟随系统");

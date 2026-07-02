@@ -6,7 +6,7 @@
 
 ## 技术栈
 
-- Tauri 1.5（Rust 后端 + WebView 前端）
+- Electron（主进程 + preload 安全桥 + Vite 渲染进程）
 - React 18 + TypeScript
 - Tailwind CSS 3（语义色变量驱动主题切换）
 - Zustand（状态管理）
@@ -27,26 +27,22 @@
 
 ```bash
 npm install          # 安装依赖
-npm run tauri:dev    # 开发模式（热更新）
-npm run tauri:build  # 打包 .app + .dmg
+npm run dev          # 开发模式（Vite + Electron 热更新）
+npm run dist         # 打包 .app + .dmg
 ```
 
-仅前端：
+构建与验证：
 
 ```bash
-npm run dev          # Vite 开发服务器
-npm run build        # 类型检查 + 前端构建
-```
-
-Rust 测试：
-
-```bash
-cd src-tauri && cargo test
+npm run build        # 类型检查 + 渲染进程构建
+npm run verify:boot  # 构建并执行 Electron 启动冒烟测试
+npm test             # 运行全部前端 / Node / Electron IPC 测试
 ```
 
 ## 设计要点
 
-- **最小权限**：Tauri `allowlist.all = false`，所有文件读写、进程调用走自定义 `invoke` 命令，不暴露 JS 端 fs/shell API。
+- **最小权限**：渲染进程启用 `contextIsolation` 且关闭 `nodeIntegration`，所有文件读写、进程调用都走 preload 暴露的 `window.api`。
+- **清晰分层**：`electron/` 只负责窗口、CSP 和 IPC 注册；`src/core/` 承载偏好、配置、插件、Skill、系统集成等纯后端逻辑；`src/api.ts` 是前端唯一调用入口。
 - **原子写入**：保存配置用「临时文件 + rename」，写入中途崩溃不会损坏原配置。
 - **PATH 修正**：macOS GUI 应用从 Finder 启动不继承终端 PATH，通过登录 shell 解析真实 PATH，保证能找到用户安装的 `claude` / `code` CLI。
 - **保存前校验**：JSON / TOML 内容先校验语法再落盘，避免写坏配置。

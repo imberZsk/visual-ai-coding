@@ -195,6 +195,35 @@ describe("visual config schemas", () => {
     expect(envField?.sensitive).toBe(true);
   });
 
+  // 该回调用于验证已核实到官方文档默认值的字段正确写入了 defaultValue，防止后续误改。
+  it("carries verified official default values for known fields", () => {
+    // claudeFields 存储 Claude schema 中展平后的全部字段定义。
+    const claudeFields = CLAUDE_SETTINGS_SCHEMA.groups.flatMap(
+      // group 参数存储当前遍历到的 Claude schema 分组定义。
+      (group) => group.fields
+    );
+    // codexFields 存储 Codex schema 中展平后的全部字段定义。
+    const codexFields = CODEX_CONFIG_SCHEMA.groups.flatMap(
+      // group 参数存储当前遍历到的 Codex schema 分组定义。
+      (group) => group.fields
+    );
+    // findField 按路径查找字段定义，供下方逐条断言默认值使用。
+    // fields 参数存储待查找的字段定义数组，path 参数存储目标字段路径。
+    const findField = (fields: typeof claudeFields, path: string) =>
+      fields.find((field) => field.path === path);
+
+    expect(findField(claudeFields, "autoCompactEnabled")?.defaultValue).toBe(true);
+    expect(findField(claudeFields, "theme")?.defaultValue).toBe("dark");
+    expect(findField(claudeFields, "sandbox.enabled")?.defaultValue).toBe(false);
+    expect(findField(claudeFields, "worktree.baseRef")?.defaultValue).toBe("fresh");
+    expect(findField(claudeFields, "cleanupPeriodDays")?.defaultValue).toBe(30);
+    expect(findField(codexFields, "allow_login_shell")?.defaultValue).toBe(true);
+    expect(findField(codexFields, "project_doc_max_bytes")?.defaultValue).toBe(32768);
+    expect(findField(codexFields, "mcp_servers")?.defaultValue).toEqual({});
+    // model 字段官方文档未给出固定默认值，schema 中不应臆造 defaultValue。
+    expect(findField(claudeFields, "model")?.defaultValue).toBeUndefined();
+  });
+
   // 该回调用于验证模型选择字段使用下拉枚举，并覆盖当前常用的新模型入口。
   it("uses model select options for Claude and Codex model fields", () => {
     // claudeFields 存储 Claude schema 中展平后的全部字段定义。

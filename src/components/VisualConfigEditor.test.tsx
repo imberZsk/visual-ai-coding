@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfigFileSpec } from "../config";
@@ -6,7 +6,7 @@ import { CODEX_CONFIG_SCHEMA } from "../config/codexConfigSchema";
 import type { VisualConfigSchema } from "./visual-config/schemaTypes";
 import VisualConfigEditor from "./VisualConfigEditor";
 
-// invokeMock 存储 Tauri invoke 的测试替身。
+// invokeMock 存储 Electron preload API 的测试替身，保留旧 command 形状便于断言参数。
 const invokeMock = vi.fn();
 // prefsMock 存储可视化配置编辑器测试用的应用偏好。
 let prefsMock = {
@@ -38,10 +38,6 @@ function createDeferred<T>() {
     reject: rejectDeferred,
   };
 }
-
-vi.mock("@tauri-apps/api/tauri", () => ({
-  invoke: (...args: unknown[]) => invokeMock(...args),
-}));
 
 vi.mock("../store", () => ({
   useAppStore: (selector: (state: unknown) => unknown) =>
@@ -79,12 +75,21 @@ const schema: VisualConfigSchema = {
           control: "switch",
           scope: "用户级",
           risk: "normal",
+          defaultValue: true,
         },
         {
           path: "model",
           title: "默认模型",
           description: "默认模型说明",
           control: "text",
+          scope: "用户级",
+          risk: "normal",
+        },
+        {
+          path: "outputStyle",
+          title: "输出风格",
+          description: "输出风格说明",
+          control: "claude-output-style",
           scope: "用户级",
           risk: "normal",
         },
@@ -130,6 +135,20 @@ custom_flag = { enabled = true, level = 2 }
 
 describe("VisualConfigEditor", () => {
   beforeEach(() => {
+    window.api = {
+      readConfigFile: (payload: {
+        id: string;
+        title: string;
+        path: string;
+        readonly: boolean;
+      }) => invokeMock("read_config_file", payload),
+      saveConfigFile: (payload: { path: string; content: string; format: string }) =>
+        invokeMock("save_config_file", payload),
+      listClaudeOutputStyles: (claudeHome: string) =>
+        invokeMock("list_claude_output_styles", { claudeHome }),
+      createClaudeOutputStyle: (payload: { claudeHome: string; name: string }) =>
+        invokeMock("create_claude_output_style", payload),
+    } as Window["api"];
     vi.useRealTimers();
     invokeMock.mockReset();
     updatePrefsMock.mockReset();
@@ -165,14 +184,28 @@ describe("VisualConfigEditor", () => {
     render(<VisualConfigEditor spec={spec} schema={schema} />);
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
+    // modelFieldButton 存储默认模型字段卡片的折叠按钮，用于确认中文标题旁显示真实配置 key。
+    const modelFieldButton = screen.getByRole("button", { name: "默认模型 配置项" });
+    expect(within(modelFieldButton).getByText("model")).toBeInTheDocument();
     expect(screen.queryByDisplayValue("opus")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    fireEvent.click(modelFieldButton);
     expect(screen.getByDisplayValue("opus")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /显示高级字段/ })).toBeInTheDocument();
     expect(screen.queryByText("customFutureFlag")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /显示高级字段/ }));
     expect(screen.getByText("customFutureFlag")).toBeInTheDocument();
     expect(screen.getByText('true')).toBeInTheDocument();
+  });
+
+  it("shows the schema-declared default value next to a field", async () => {
+    render(<VisualConfigEditor spec={spec} schema={schema} />);
+
+    // autoUpdatesField 存储带 defaultValue 声明的自动更新字段标题节点。
+    const autoUpdatesField = await screen.findByText("自动更新");
+    expect(within(autoUpdatesField.closest("button")!).getByText("默认值：true")).toBeInTheDocument();
+    // modelField 存储未声明 defaultValue 的默认模型字段标题节点，不应展示默认值文案。
+    const modelField = screen.getByText("默认模型");
+    expect(within(modelField.closest("button")!).queryByText(/默认值：/)).not.toBeInTheDocument();
   });
 
   it("uses an animated details container when expanding a field", async () => {
@@ -616,6 +649,77 @@ describe("VisualConfigEditor", () => {
         format: "json",
       });
     });
+  });
+
+  it("warns when the selected Claude output style is missing and can create it", async () => {
+    // outputStylesAfterCreate 存储创建动作是否已经发生，用于模拟后端重新扫描后的列表变化。
+    let outputStylesAfterCreate = false;
+    invokeMock.mockImplementation(async (command: string, args?: { name?: string }) => {
+      if (command === "read_config_file") {
+        return {
+          id: "claude-settings",
+          title: "settings.json",
+          path: "/Users/test/.claude/settings.json",
+          format: "json",
+          content: JSON.stringify({ outputStyle: "毒舌" }, null, 2),
+          exists: true,
+          readonly: false,
+        };
+      }
+
+      if (command === "list_claude_output_styles") {
+        return {
+          directory: "/Users/test/.claude/output-styles",
+          exists: outputStylesAfterCreate,
+          diagnostics: outputStylesAfterCreate ? "" : "目录不存在",
+          styles: [
+            { name: "default", kind: "builtin", path: "", description: "默认输出风格" },
+            { name: "Explanatory", kind: "builtin", path: "", description: "解释型输出风格" },
+            { name: "Learning", kind: "builtin", path: "", description: "学习型输出风格" },
+            ...(outputStylesAfterCreate
+              ? [
+                  {
+                    name: "毒舌",
+                    kind: "custom",
+                    path: "/Users/test/.claude/output-styles/毒舌.md",
+                    description: "自定义输出风格：毒舌",
+                  },
+                ]
+              : []),
+          ],
+        };
+      }
+
+      if (command === "create_claude_output_style") {
+        outputStylesAfterCreate = true;
+        return {
+          name: args?.name ?? "毒舌",
+          kind: "custom",
+          path: "/Users/test/.claude/output-styles/毒舌.md",
+          description: "自定义输出风格：毒舌",
+        };
+      }
+
+      return undefined;
+    });
+
+    render(<VisualConfigEditor spec={spec} schema={schema} />);
+
+    expect(await screen.findByText("输出风格")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "输出风格 配置项" }));
+
+    expect(await screen.findByText("“毒舌”未找到")).toBeInTheDocument();
+    expect(screen.getByText("/Users/test/.claude/output-styles/毒舌.md")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "创建“毒舌”风格文件" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("create_claude_output_style", {
+        claudeHome: "/Users/test/.claude",
+        name: "毒舌",
+      });
+    });
+    expect(await screen.findByText("已找到自定义风格")).toBeInTheDocument();
   });
 
   it("persists manually hidden fields and shows them only after expanding more config", async () => {

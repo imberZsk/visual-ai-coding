@@ -3,12 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SkillsPage from "./SkillsPage";
 
-// invokeMock 存储 Tauri invoke 的测试替身。
+// invokeMock 存储 Electron preload API 的测试替身，保留旧 command 形状便于断言参数。
 const invokeMock = vi.fn();
-
-vi.mock("@tauri-apps/api/tauri", () => ({
-  invoke: (...args: unknown[]) => invokeMock(...args),
-}));
 
 vi.mock("../store", () => ({
   useAppStore: (selector: (state: unknown) => unknown) =>
@@ -23,6 +19,12 @@ vi.mock("../store", () => ({
 
 describe("SkillsPage", () => {
   beforeEach(() => {
+    window.api = {
+      listSkills: (payload: { claudeHome: string; codexHome: string }) =>
+        invokeMock("list_skills", payload),
+      openInVscode: (payload: { vscodePath: string; target: string }) =>
+        invokeMock("open_in_vscode", payload),
+    } as Window["api"];
     invokeMock.mockReset();
     invokeMock.mockResolvedValue({
       skills: [

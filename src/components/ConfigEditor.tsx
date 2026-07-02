@@ -4,7 +4,7 @@ import type { ConfigFileSpec } from "../config";
 import type { ConfigFile } from "../types";
 import { readConfigFile, saveConfigFile, openInVscode, revealInFinder } from "../api";
 import { useAppStore } from "../store";
-import { Card, Button, Badge } from "./ui";
+import { Card, Button, Badge, LoadingIcon } from "./ui";
 
 // 拼接工具根目录与相对路径，得到配置文件绝对路径
 // home 为工具根目录（claude_home / codex_home），relPath 为相对子路径
@@ -122,8 +122,8 @@ export default function ConfigEditor({ spec }: { spec: ConfigFileSpec }) {
           </Button>
           {/* 只读文件不提供保存 */}
           {!spec.readonly && (
-            <Button onClick={handleSave} variant="primary" disabled={saving || !dirty}>
-              {saving ? "保存中…" : "保存"}
+            <Button onClick={handleSave} variant="primary" disabled={!dirty} loading={saving}>
+              保存
             </Button>
           )}
         </div>
@@ -131,7 +131,10 @@ export default function ConfigEditor({ spec }: { spec: ConfigFileSpec }) {
 
       {/* 内容编辑区 */}
       {loading ? (
-        <div className="py-8 text-center text-sm text-text-muted">加载中…</div>
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-text-muted">
+          <LoadingIcon className="h-3.5 w-3.5" />
+          <span>加载中…</span>
+        </div>
       ) : (
         <textarea
           value={draft}
