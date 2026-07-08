@@ -3,7 +3,7 @@ import { CLAUDE_CONFIG_FILES, CODEX_CONFIG_FILES } from "../config";
 import { CLAUDE_SETTINGS_SCHEMA } from "../config/claudeSettingsSchema";
 import { CODEX_CONFIG_SCHEMA } from "../config/codexConfigSchema";
 import CapabilityConfigEditor from "../components/CapabilityConfigEditor";
-import { PageHeader } from "../components/ui";
+import { PageHeader, PageShell } from "../components/ui";
 
 // CLAUDE_MCP_FIELD_PATHS 存储 Claude settings 中与 MCP 能力相关的字段路径。
 const CLAUDE_MCP_FIELD_PATHS = [
@@ -47,7 +47,7 @@ export default function McpPage() {
   const codexConfigSpec = findConfigSpec(CODEX_CONFIG_FILES, "codex-config");
 
   return (
-    <div className="p-6">
+    <PageShell>
       <PageHeader
         title="MCP"
         subtitle="集中管理 Claude 与 Codex 的 MCP server、项目 MCP 和 OAuth 配置"
@@ -68,6 +68,6 @@ export default function McpPage() {
           title="Codex MCP"
         />
       </div>
-    </div>
+    </PageShell>
   );
 }

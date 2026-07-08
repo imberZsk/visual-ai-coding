@@ -1,7 +1,7 @@
 // 概览页：展示本机 AI 工具安装状态、配置目录、快速入口
 import { useState } from "react";
 import { useAppStore } from "../store";
-import { PageHeader, Card, Badge, Button } from "../components/ui";
+import { PageHeader, Card, Badge, Button, PageShell } from "../components/ui";
 import { revealInFinder, openInVscode } from "../api";
 import type { ToolStatus } from "../types";
 import { comparePluginVersions } from "../utils/versionCompare";
@@ -134,20 +134,23 @@ export function DashboardContent({ compact = false }: DashboardContentProps) {
               <div className="truncate" title={tool.path}>
                 路径：{tool.path || "—"}
               </div>
-              {versionCheck.latestVersion && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span>最新版本：{versionCheck.latestVersion}</span>
-                  {getVersionBadge(tool.version, versionCheck.latestVersion)}
-                </div>
-              )}
-              {versionCheck.error && (
-                <div className="text-amber-500">
-                  查询失败：{versionCheck.error}
-                </div>
-              )}
-              {versionCheck.updateMessage && (
-                <div className="text-green-500">{versionCheck.updateMessage}</div>
-              )}
+              {/* 版本查询结果区：常驻 min-h 预留一行占位，避免查询完成后信息插入把下方按钮行下推、导致同 grid 行两卡片高度骤然不一致（CLS） */}
+              <div className="min-h-[1.25rem]">
+                {versionCheck.latestVersion && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>最新版本：{versionCheck.latestVersion}</span>
+                    {getVersionBadge(tool.version, versionCheck.latestVersion)}
+                  </div>
+                )}
+                {versionCheck.error && (
+                  <div className="text-warning">
+                    查询失败：{versionCheck.error}
+                  </div>
+                )}
+                {versionCheck.updateMessage && (
+                  <div className="text-success">{versionCheck.updateMessage}</div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -282,8 +285,8 @@ export function DashboardContent({ compact = false }: DashboardContentProps) {
 // 概览页组件
 export default function Dashboard() {
   return (
-    <div className="p-6">
+    <PageShell>
       <DashboardContent />
-    </div>
+    </PageShell>
   );
 }

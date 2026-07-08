@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import * as TOML from "smol-toml";
-import { expandHome, runCommand } from "./util.js";
+import { atomicWrite, expandHome, runCommand } from "./util.js";
 
 // parseSemverLike 解析 semver-like 版本字符串。
 // version 参数存储待解析的版本文本。
@@ -294,6 +294,16 @@ function readCodexConfigRoot(codexHome) {
   return TOML.parse(content);
 }
 
+// writeCodexConfigRoot 将 Codex config.toml 根对象序列化并原子写回。
+// codexHome 参数存储 Codex home 目录，root 参数存储待写入的 TOML 根对象。
+function writeCodexConfigRoot(codexHome, root) {
+  // configPath 存储 Codex config.toml 路径。
+  const configPath = join(codexHome, "config.toml");
+  // content 存储序列化后的 TOML 文本。
+  const content = TOML.stringify(root);
+  atomicWrite(configPath, content);
+}
+
 // readCodexPluginManifest 读取已安装 Codex 插件的 plugin.json。
 // installPath 参数存储具体版本安装目录。
 function readCodexPluginManifest(installPath) {
@@ -547,6 +557,63 @@ export async function updateCodexPlugin(pluginId, marketplace) {
     args.push("--marketplace", marketplaceArg);
   }
   return runPluginCli("codex", args, "CODEX_HOME", defaultHome);
+}
+
+// buildClaudePluginToggleArgs 构造 Claude 插件启停命令参数。
+// pluginName 参数存储插件完整名，scope 参数存储安装作用域，enabled 参数表示目标启用状态。
+export function buildClaudePluginToggleArgs(pluginName, scope, enabled) {
+  // normalizedPluginName 存储去掉空白后的插件完整名。
+  const normalizedPluginName = String(pluginName || "").trim();
+  // normalizedScope 存储去掉空白后的安装作用域。
+  const normalizedScope = String(scope || "").trim();
+  if (!normalizedPluginName) {
+    throw new Error("插件名称不能为空");
+  }
+
+  // args 存储传给 Claude CLI 的启停参数。
+  const args = ["plugin", enabled ? "enable" : "disable", normalizedPluginName];
+  if (normalizedScope) {
+    // Claude project/local/user 插件需要带作用域，否则 auto-detect 可能作用到错误安装位置。
+    args.push("-s", normalizedScope);
+  }
+  return args;
+}
+
+// setClaudePluginEnabled 通过 Claude CLI 启用或禁用指定插件。
+// pluginName 参数存储插件完整名，scope 参数存储安装作用域，enabled 参数表示目标启用状态，claudeHome 参数存储 Claude 配置根目录。
+export async function setClaudePluginEnabled(pluginName, scope, enabled, claudeHome) {
+  // home 存储本次命令使用的 Claude 配置根目录。
+  const home = claudeHome || process.env.CLAUDE_HOME || "~/.claude";
+  // args 存储传给 Claude CLI 的启停参数。
+  const args = buildClaudePluginToggleArgs(pluginName, scope, enabled);
+  return runPluginCli("claude", args, "CLAUDE_HOME", home);
+}
+
+// setCodexPluginEnabled 通过写入 config.toml 启用或禁用指定 Codex 插件。
+// codexHome 参数存储 Codex 配置根目录，pluginId 参数存储插件完整 ID，enabled 参数表示目标启用状态。
+export function setCodexPluginEnabled(codexHome, pluginId, enabled) {
+  // expandedHome 存储展开后的 Codex 配置根目录。
+  const expandedHome = expandHome(codexHome);
+  // normalizedPluginId 存储去掉空白后的插件完整 ID。
+  const normalizedPluginId = String(pluginId || "").trim();
+  if (!normalizedPluginId) {
+    throw new Error("插件 ID 不能为空");
+  }
+
+  // root 存储解析后的 Codex config.toml 根对象。
+  const root = readCodexConfigRoot(expandedHome);
+  if (!root.plugins || typeof root.plugins !== "object") {
+    // Codex 插件配置整体缺失时创建 plugins 表，支持已安装但未写 enabled 的插件补齐状态。
+    root.plugins = {};
+  }
+  if (!root.plugins[normalizedPluginId] || typeof root.plugins[normalizedPluginId] !== "object") {
+    // 单个插件配置缺失时创建插件表，避免覆盖其他插件配置。
+    root.plugins[normalizedPluginId] = {};
+  }
+
+  root.plugins[normalizedPluginId].enabled = Boolean(enabled);
+  writeCodexConfigRoot(expandedHome, root);
+  return enabled ? "已启用插件" : "已禁用插件";
 }
 
 // updateCodexMarketplace 通过 Codex CLI 刷新 marketplace 快照。

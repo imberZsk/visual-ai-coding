@@ -13,6 +13,8 @@ import {
   checkCodexPluginUpdates,
   listClaudeMarketplaces,
   listClaudePlugins,
+  setClaudePluginEnabled,
+  setCodexPluginEnabled,
   updateClaudeMarketplace,
   updateClaudePlugin,
   updateCodexMarketplace,
@@ -79,6 +81,18 @@ export function registerIpcHandlers(ipcMain, deps = {}) {
   ipcMain.handle(IPC.UPDATE_CODEX_MARKETPLACE, (_event, marketplaceName) =>
     updateCodexMarketplace(marketplaceName),
   );
+  ipcMain.handle(IPC.SET_PLUGIN_ENABLED, (_event, payload) => {
+    if (payload.tool === "claude") {
+      // Claude 插件启停优先使用官方 CLI，确保 scope 与 Claude 自身配置语义一致。
+      return setClaudePluginEnabled(
+        payload.pluginId,
+        payload.scope,
+        payload.enabled,
+        payload.claudeHome,
+      );
+    }
+    return setCodexPluginEnabled(payload.codexHome, payload.pluginId, payload.enabled);
+  });
 
   ipcMain.handle(IPC.LIST_SKILLS, (_event, payload) =>
     listSkills(payload.claudeHome, payload.codexHome),

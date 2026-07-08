@@ -4,7 +4,7 @@ import { CLAUDE_SETTINGS_SCHEMA } from "../config/claudeSettingsSchema";
 import { CODEX_CONFIG_SCHEMA } from "../config/codexConfigSchema";
 import CapabilityConfigEditor from "../components/CapabilityConfigEditor";
 import ConfigEditor from "../components/ConfigEditor";
-import { PageHeader } from "../components/ui";
+import { PageHeader, PageShell } from "../components/ui";
 
 // CLAUDE_HOOK_FIELD_PATHS 存储 Claude settings 中与 Hooks 能力相关的字段路径。
 const CLAUDE_HOOK_FIELD_PATHS = [
@@ -41,7 +41,7 @@ export default function HooksPage() {
   const codexHooksSpec = findConfigSpec(CODEX_CONFIG_FILES, "codex-hooks");
 
   return (
-    <div className="p-6">
+    <PageShell>
       <PageHeader
         title="Hooks"
         subtitle="集中管理 Claude 与 Codex 的生命周期 Hook 配置"
@@ -63,6 +63,6 @@ export default function HooksPage() {
         />
         <ConfigEditor spec={codexHooksSpec} />
       </div>
-    </div>
+    </PageShell>
   );
 }

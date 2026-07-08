@@ -17,6 +17,7 @@ export const IPC = {
   UPDATE_CLAUDE_MARKETPLACE: "update-claude-marketplace",
   UPDATE_CODEX_PLUGIN: "update-codex-plugin",
   UPDATE_CODEX_MARKETPLACE: "update-codex-marketplace",
+  SET_PLUGIN_ENABLED: "set-plugin-enabled",
   LIST_SKILLS: "list-skills",
   CHECK_TOOL_LATEST_VERSION: "check-tool-latest-version",
   UPDATE_TOOL_CLI: "update-tool-cli",

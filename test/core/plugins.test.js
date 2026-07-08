@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import * as TOML from "smol-toml";
 import {
+  buildClaudePluginToggleArgs,
   buildCodexFallbackResult,
   buildUpdateToolArgs,
   compareVersions,
   parseClaudePluginUpdateCheckOutput,
   parseCodexPluginUpdateCheckOutput,
+  setCodexPluginEnabled,
 } from "../../src/core/plugins.js";
 
 // makeTempCodexHome 创建隔离 Codex home，供 fallback 解析测试使用。
@@ -117,5 +120,54 @@ describe("core plugins", () => {
       "@openai/codex",
       "--registry=https://registry.npmjs.org",
     ]);
+  });
+
+  // 验证 Claude 插件启停参数会保留安装作用域，避免 project/local 插件被切到错误位置。
+  it("builds Claude plugin enable and disable args with scope", () => {
+    expect(buildClaudePluginToggleArgs("superpowers@superpowers-dev", "user", true)).toEqual([
+      "plugin",
+      "enable",
+      "superpowers@superpowers-dev",
+      "-s",
+      "user",
+    ]);
+    expect(buildClaudePluginToggleArgs("superpowers@superpowers-dev", "project", false)).toEqual([
+      "plugin",
+      "disable",
+      "superpowers@superpowers-dev",
+      "-s",
+      "project",
+    ]);
+  });
+
+  // 验证 Codex 插件启停会写回已存在的 config.toml 插件表。
+  it("toggles an existing Codex plugin in config.toml", () => {
+    // codexHome 存储测试专属 Codex home。
+    const codexHome = makeTempCodexHome();
+    writeFileSync(
+      join(codexHome, "config.toml"),
+      "[plugins.\"browser@openai-bundled\"]\nenabled = true\n",
+    );
+
+    setCodexPluginEnabled(codexHome, "browser@openai-bundled", false);
+
+    // nextRoot 存储切换后重新解析的 TOML 根对象。
+    const nextRoot = TOML.parse(readFileSync(join(codexHome, "config.toml"), "utf8"));
+    expect(nextRoot.plugins["browser@openai-bundled"].enabled).toBe(false);
+    rmSync(codexHome, { recursive: true, force: true });
+  });
+
+  // 验证 Codex 插件启停能为已有安装但缺失配置的插件创建配置表。
+  it("creates a Codex plugin table when toggling a missing plugin entry", () => {
+    // codexHome 存储测试专属 Codex home。
+    const codexHome = makeTempCodexHome();
+    writeFileSync(join(codexHome, "config.toml"), "model = \"gpt-5\"\n");
+
+    setCodexPluginEnabled(codexHome, "browser@openai-bundled", true);
+
+    // nextRoot 存储切换后重新解析的 TOML 根对象。
+    const nextRoot = TOML.parse(readFileSync(join(codexHome, "config.toml"), "utf8"));
+    expect(nextRoot.plugins["browser@openai-bundled"].enabled).toBe(true);
+    rmSync(codexHome, { recursive: true, force: true });
   });
 });

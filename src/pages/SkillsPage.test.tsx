@@ -67,31 +67,36 @@ describe("SkillsPage", () => {
     });
   });
 
-  // 验证技能页使用清单式表格结构展示信息，避免来源分组和卡片层层嵌套造成阅读负担。
-  it("uses a flat directory table with clear columns", async () => {
+  // 验证技能页使用 Ant Design Table 展示信息，避免继续维护手写 role/grid 表格。
+  it("uses an Ant Design directory table with clear columns", async () => {
     render(<SkillsPage />);
 
-    expect(await screen.findByRole("table", { name: "Skill 清单" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Skill" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "用途" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "来源" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "路径" })).toBeInTheDocument();
+    // skillName 存储首个 skill 名称节点，用于向上定位 Ant Design Table 容器。
+    const skillName = await screen.findByText("openai-docs");
+    // table 存储 Ant Design Table 根节点，用于确认表格能力来自 antd。
+    const table = skillName.closest(".ant-table");
+
+    expect(table).toBeInTheDocument();
+    expect(within(table as HTMLElement).getByText("Skill")).toBeInTheDocument();
+    expect(within(table as HTMLElement).getByText("用途")).toBeInTheDocument();
+    expect(within(table as HTMLElement).getByText("来源")).toBeInTheDocument();
+    expect(within(table as HTMLElement).getByText("路径")).toBeInTheDocument();
   });
 
-  // 验证路径列不会使用横向滚动容器，而是通过换行与截断保持响应式。
-  it("wraps long paths without horizontal scrolling", async () => {
+  // 验证路径列改用 Ant Design Typography 省略能力承接长路径展示。
+  it("renders long paths with Ant Design Typography ellipsis", async () => {
     render(<SkillsPage />);
 
-    // table 存储技能清单容器，用于检查内部不再出现横向滚动包装层。
-    const table = await screen.findByRole("table", { name: "Skill 清单" });
+    expect(await screen.findByText("brainstorming")).toBeInTheDocument();
+
     // pathNode 存储某条长路径文本节点，用于确认路径文本允许断词与行数控制。
     const pathNode = screen.getByText(
       "/Users/test/.codex/plugins/cache/superpowers-dev/superpowers/6.0.3/skills/brainstorming/SKILL.md"
     );
 
-    expect(table.querySelector(".overflow-x-auto")).not.toBeInTheDocument();
-    expect(pathNode).toHaveClass("break-all");
-    expect(pathNode).toHaveClass("line-clamp-2");
+    expect(pathNode).toHaveClass("skill-path-text");
+    expect(pathNode.closest(".ant-typography")).toBeInTheDocument();
+    expect(pathNode.closest(".ant-table")).toBeInTheDocument();
   });
 
   // 验证点击 Skill 行的 VSCode 按钮会用配置的 VSCode CLI 打开对应 SKILL.md 文件。
@@ -129,13 +134,13 @@ describe("SkillsPage", () => {
     // button 存储第一个 VSCode 图标按钮，用于确认其仍保留可访问名称。
     const button = screen.getAllByRole("button", { name: "VSCode" })[0];
     expect(within(button).getByRole("img", { name: "vscode" })).toBeInTheDocument();
-    expect(button).toHaveClass("h-8");
-    expect(button).toHaveClass("w-8");
+    expect(button).toHaveClass("ant-btn-icon-only");
+    expect(button).toHaveClass("ant-btn-text");
     expect(button).not.toHaveTextContent("VSCode");
   });
 
-  // 验证刷新按钮在重新加载 skill 时复用图标 loading，避免页面出现双重加载文案。
-  it("shows icon loading while refreshing skills", async () => {
+  // 验证刷新按钮在重新加载 skill 时使用 Ant Design Button 的内置 loading。
+  it("shows Ant Design button loading while refreshing skills", async () => {
     // user 存储用户交互模拟器，用于点击刷新按钮。
     const user = userEvent.setup();
 
@@ -148,8 +153,10 @@ describe("SkillsPage", () => {
 
     // refreshButton 存储进入刷新状态的按钮，用于确认 loading 图标存在且按钮禁用。
     const refreshButton = screen.getByRole("button", { name: "刷新" });
-    expect(refreshButton).toBeDisabled();
-    expect(within(refreshButton).getByTestId("loading-icon")).toBeInTheDocument();
+    await waitFor(() => expect(refreshButton).toBeDisabled());
+    expect(refreshButton.querySelector(".ant-btn-loading-icon")).toBeInTheDocument();
+    expect(refreshButton.querySelector(".anticon-loading")).toBeInTheDocument();
+    expect(within(refreshButton).queryByTestId("loading-icon")).not.toBeInTheDocument();
   });
 
   // 验证搜索框可按描述过滤 skill，用户能快速定位自己关心的能力。

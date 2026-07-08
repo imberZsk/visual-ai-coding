@@ -146,6 +146,15 @@ describe("Dashboard", () => {
     }>();
 
     checkToolLatestVersionMock.mockReturnValue(versionDeferred.promise);
+    detectToolsMock.mockResolvedValue([
+      {
+        id: "claude",
+        name: "Claude Code",
+        installed: true,
+        version: "2.1.177",
+        path: "/opt/homebrew/bin/claude",
+      },
+    ]);
 
     render(<Dashboard />);
 
@@ -167,6 +176,37 @@ describe("Dashboard", () => {
     expect(screen.getByText("可更新")).toBeInTheDocument();
   });
 
+  // 验证查询最新版本时会同步刷新本地 CLI 版本，避免展示已过期的启动时缓存。
+  it("refreshes local tool detection after checking latest version", async () => {
+    // user 存储用户交互模拟器，用于点击版本查询按钮。
+    const user = userEvent.setup();
+
+    checkToolLatestVersionMock.mockResolvedValue({
+      tool_id: "claude",
+      package_name: "@anthropic-ai/claude-code",
+      latest_version: "2.1.196",
+    });
+    detectToolsMock.mockResolvedValue([
+      {
+        id: "claude",
+        name: "Claude Code",
+        installed: true,
+        version: "2.1.196",
+        path: "/opt/homebrew/bin/claude",
+      },
+    ]);
+
+    render(<Dashboard />);
+
+    expect(screen.getByText("版本：2.1.177")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "查询最新版本" }));
+
+    expect(await screen.findByText("版本：2.1.196")).toBeInTheDocument();
+    expect(screen.getByText("已最新")).toBeInTheDocument();
+    expect(detectToolsMock).toHaveBeenCalled();
+  });
+
   // 验证查询到新版本后会展示更新按钮，并在更新完成后重新探测本机工具状态。
   it("shows an update button for outdated Claude Code and refreshes tools after updating", async () => {
     // user 存储用户交互模拟器，用于点击查询与更新按钮。
@@ -180,15 +220,25 @@ describe("Dashboard", () => {
       latest_version: "2.1.196",
     });
     updateToolCliMock.mockReturnValue(updateDeferred.promise);
-    detectToolsMock.mockResolvedValue([
-      {
-        id: "claude",
-        name: "Claude Code",
-        installed: true,
-        version: "2.1.196",
-        path: "/opt/homebrew/bin/claude",
-      },
-    ]);
+    detectToolsMock
+      .mockResolvedValueOnce([
+        {
+          id: "claude",
+          name: "Claude Code",
+          installed: true,
+          version: "2.1.177",
+          path: "/opt/homebrew/bin/claude",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "claude",
+          name: "Claude Code",
+          installed: true,
+          version: "2.1.196",
+          path: "/opt/homebrew/bin/claude",
+        },
+      ]);
 
     render(<Dashboard />);
 

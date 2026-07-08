@@ -1,5 +1,6 @@
 // 配置文件读写：统一读取/保存 Claude 与 Codex 的配置文件，并扫描 Claude output style。
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import * as TOML from "smol-toml";
 import { atomicWrite, expandHome } from "./util.js";
@@ -70,27 +71,40 @@ export function saveConfigFile(filePath, content, format) {
 
 // listDir 列出目录直接子条目，目录优先并按名称排序。
 // dirPath 参数存储待浏览目录路径。
-export function listDir(dirPath) {
+// WHY 改为 async：对大目录逐条 statSync 会在主进程累积阻塞，改用 fs.promises 避免卡主线程。
+export async function listDir(dirPath) {
   // absolutePath 存储展开后的目录路径。
   const absolutePath = expandHome(dirPath);
   if (!existsSync(absolutePath)) {
     return [];
   }
 
-  // entries 存储目录下可读条目。
-  const entries = readdirSync(absolutePath, { withFileTypes: true })
-    .map((entry) => {
+  // rawEntries 存储目录原始条目（含文件类型，避免重复 stat）。
+  const rawEntries = await readdir(absolutePath, { withFileTypes: true });
+  // statResults 并行获取所有条目的文件元数据，减少串行等待。
+  const statResults = await Promise.all(
+    rawEntries.map(async (entry) => {
       // entryPath 存储当前条目绝对路径。
       const entryPath = join(absolutePath, entry.name);
-      // meta 存储当前条目的文件系统元数据。
-      const meta = statSync(entryPath);
-      return {
-        name: entry.name,
-        path: entryPath,
-        is_dir: meta.isDirectory(),
-        size: meta.isDirectory() ? 0 : meta.size,
-      };
-    })
+      try {
+        // meta 存储当前条目文件系统元数据。
+        const meta = await stat(entryPath);
+        return {
+          name: entry.name,
+          path: entryPath,
+          is_dir: meta.isDirectory(),
+          size: meta.isDirectory() ? 0 : meta.size,
+        };
+      } catch {
+        // 条目在读取间隙被删除时静默跳过
+        return null;
+      }
+    }),
+  );
+
+  // entries 存储过滤掉 null（已删除条目）后的有效条目列表。
+  const entries = statResults
+    .filter(Boolean)
     .sort((left, right) => {
       if (left.is_dir !== right.is_dir) {
         return left.is_dir ? -1 : 1;
@@ -172,15 +186,15 @@ function parseFrontMatterValue(content, key) {
   return undefined;
 }
 
-// readCustomOutputStyle 从 Markdown 文件读取自定义 output style 元数据。
+// readCustomOutputStyle 从 Markdown 文件异步读取自定义 output style 元数据。
 // filePath 参数存储待解析 Markdown 文件路径。
-function readCustomOutputStyle(filePath) {
+async function readCustomOutputStyle(filePath) {
   if (extname(filePath) !== ".md") {
     return undefined;
   }
 
   // content 存储 Markdown 文件内容。
-  const content = readFileSync(filePath, "utf8");
+  const content = await readFile(filePath, "utf8");
   // fallbackName 存储文件名去掉 .md 后的兜底风格名称。
   const fallbackName = basename(filePath, ".md");
   if (!fallbackName) {
@@ -230,9 +244,10 @@ function outputStyleTemplate(name) {
   return `---\nname: ${name}\ndescription: ${description}\n---\n\n你是一个使用「${name}」输出风格的助手。\n\n- 保持技术判断准确，先保证事实、边界和风险说明正确\n- 表达方式贴合「${name}」这个风格名称，但不要为了语气牺牲清晰度\n- 代码、命令和配置建议必须可执行、可验证\n`;
 }
 
-// listClaudeOutputStyles 扫描 Claude output style 列表。
+// listClaudeOutputStyles 异步扫描 Claude output style 列表。
 // claudeHome 参数存储 Claude 配置根目录。
-export function listClaudeOutputStyles(claudeHome) {
+// WHY 改为 async：readdirSync + 每文件 readFileSync 会在 IPC handler 中同步阻塞主进程。
+export async function listClaudeOutputStyles(claudeHome) {
   // dir 存储自定义 output style 目录。
   const dir = outputStylesDir(claudeHome);
   // builtinStyles 存储内置风格列表。
@@ -249,7 +264,19 @@ export function listClaudeOutputStyles(claudeHome) {
     };
   }
 
-  if (!statSync(dir).isDirectory()) {
+  let dirStat;
+  try {
+    dirStat = await stat(dir);
+  } catch {
+    return {
+      directory: dir,
+      exists: false,
+      styles: builtinStyles,
+      diagnostics: "output-styles 路径读取失败",
+    };
+  }
+
+  if (!dirStat.isDirectory()) {
     return {
       directory: dir,
       exists: false,
@@ -258,23 +285,25 @@ export function listClaudeOutputStyles(claudeHome) {
     };
   }
 
-  // customStyles 存储解析出的自定义风格。
-  const customStyles = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile()) {
-      continue;
-    }
-    try {
-      // style 存储单个 Markdown 解析结果。
-      const style = readCustomOutputStyle(join(dir, entry.name));
-      if (style) {
-        customStyles.push(style);
-      }
-    } catch (error) {
-      diagnostics.push(error.message);
-    }
-  }
+  // rawEntries 存储目录原始条目（含文件类型标志）。
+  const rawEntries = await readdir(dir, { withFileTypes: true });
+  // fileEntries 存储过滤后的文件条目（跳过子目录）。
+  const fileEntries = rawEntries.filter((e) => e.isFile());
 
+  // 并行读取所有 .md 文件的元数据，减少串行等待。
+  const styleResults = await Promise.all(
+    fileEntries.map(async (entry) => {
+      try {
+        return await readCustomOutputStyle(join(dir, entry.name));
+      } catch (error) {
+        diagnostics.push(error.message);
+        return null;
+      }
+    }),
+  );
+
+  // customStyles 存储解析成功的自定义风格（过滤掉 null 与 undefined）。
+  const customStyles = styleResults.filter(Boolean);
   customStyles.sort((left, right) => left.name.toLowerCase().localeCompare(right.name.toLowerCase()));
 
   return {

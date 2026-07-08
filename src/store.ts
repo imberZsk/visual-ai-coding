@@ -13,6 +13,7 @@ import {
   getPreferences,
   savePreferences as apiSavePreferences,
   detectTools,
+  setPluginEnabled as apiSetPluginEnabled,
   updateClaudePlugin,
   updateCodexMarketplace,
   updateCodexPlugin,
@@ -42,14 +43,29 @@ interface PluginUpdateOperation {
   promise: Promise<void>; // promise 存储本次更新任务，供重复点击复用。
 }
 
+// PluginToggleFeedback 描述单条插件启停操作的执行阶段与反馈文本。
+interface PluginToggleFeedback {
+  target: string; // target 存储当前启停中的插件名称或最近启停完成的插件名称。
+  phase: "loading" | "ok" | "err"; // phase 存储启停阶段，控制提示条颜色与文案。
+  text: string; // text 存储 CLI 输出、写配置结果或错误信息。
+}
+
+// PluginToggleOperation 描述正在执行的单个插件启停任务。
+interface PluginToggleOperation {
+  loading: boolean; // loading 标记该插件启停是否仍在执行。
+  promise: Promise<void>; // promise 存储本次启停任务，供重复点击复用。
+}
+
 // PluginPageState 描述插件页跨组件生命周期保留的异步状态。
 interface PluginPageState {
   claude: PluginToolCheckState; // claude 存储 Claude 插件检查状态。
   codex: PluginToolCheckState; // codex 存储 Codex 插件检查状态。
   refreshingAll: boolean; // refreshingAll 标记顶部“刷新全部”是否正在执行。
   update: PluginUpdateFeedback | null; // update 存储当前插件更新操作的反馈信息。
+  toggle: PluginToggleFeedback | null; // toggle 存储当前插件启停操作的反馈信息。
   checking: Partial<Record<PluginToolId, Promise<void>>>; // checking 存储各工具正在执行的检查 Promise。
   updating: Record<string, PluginUpdateOperation>; // updating 存储各插件正在执行的更新 Promise。
+  toggling: Record<string, PluginToggleOperation>; // toggling 存储各插件正在执行的启停 Promise。
 }
 
 // ToolVersionCheckState 存储单个工具最新版本查询和更新状态。
@@ -73,8 +89,10 @@ function createInitialPluginPageState(): PluginPageState {
     codex: createEmptyPluginToolCheckState(),
     refreshingAll: false,
     update: null,
+    toggle: null,
     checking: {},
     updating: {},
+    toggling: {},
   };
 }
 
@@ -94,6 +112,18 @@ function cleanUpdatingMap(
   const nextUpdating = { ...updating };
   delete nextUpdating[key];
   return nextUpdating;
+}
+
+// cleanTogglingMap 返回移除指定 key 后的新启停任务映射。
+// toggling 存储当前所有启停任务，key 为需要移除的任务标识。
+function cleanTogglingMap(
+  toggling: Record<string, PluginToggleOperation>,
+  key: string
+): Record<string, PluginToggleOperation> {
+  // nextToggling 存储拷贝后的启停任务映射，避免直接修改 zustand 当前状态。
+  const nextToggling = { ...toggling };
+  delete nextToggling[key];
+  return nextToggling;
 }
 
 // createIdleToolVersionCheck 创建空闲态工具版本状态，用于初始化或重置错误信息。
@@ -143,6 +173,8 @@ interface AppState {
   checkAllPluginUpdates: () => Promise<void>;
   // 更新指定工具下的单个插件
   updatePlugin: (tool: PluginToolId, plugin: ToolPluginInfo) => Promise<void>;
+  // 启用或禁用指定工具下的单个插件
+  setPluginEnabled: (tool: PluginToolId, plugin: ToolPluginInfo, enabled: boolean) => Promise<void>;
   // 查询指定工具的 npm 最新版本
   checkLatestToolVersion: (toolId: string) => Promise<void>;
   // 更新指定工具 CLI 到最新版
@@ -365,6 +397,98 @@ export const useAppStore = create<AppState>((set, get) => ({
     return promise;
   },
 
+  // 启用或禁用指定工具下的单个插件；相同插件已有任务时复用 Promise，避免重复写配置或重复调用 CLI。
+  setPluginEnabled: (tool, plugin, enabled) => {
+    // key 存储当前插件启停任务的唯一标识。
+    const key = pluginUpdateKey(tool, plugin);
+    // existingOperation 存储已存在的同插件启停任务。
+    const existingOperation = get().pluginPage.toggling[key];
+    if (existingOperation) {
+      // 同一个插件启停正在进行时直接复用，避免重复执行命令。
+      return existingOperation.promise;
+    }
+
+    // claudeHome 存储当前 Claude 配置根目录。
+    const claudeHome = get().prefs?.claude_home || "";
+    // codexHome 存储当前 Codex 配置根目录。
+    const codexHome = get().prefs?.codex_home || "";
+    // activeHome 存储当前工具本次启停需要的配置根目录。
+    const activeHome = tool === "claude" ? claudeHome : codexHome;
+    if (!activeHome) {
+      // 配置根目录缺失时不启动后端任务，避免写到默认目录造成用户误操作。
+      set((state) => ({
+        pluginPage: {
+          ...state.pluginPage,
+          toggle: {
+            target: plugin.id,
+            phase: "err",
+            text: tool === "claude" ? "未配置 Claude 配置目录" : "未配置 Codex 配置目录",
+          },
+        },
+      }));
+      return Promise.resolve();
+    }
+
+    set((state) => ({
+      pluginPage: {
+        ...state.pluginPage,
+        toggle: { target: plugin.id, phase: "loading", text: "" },
+      },
+    }));
+
+    // promise 存储本次插件启停任务，供开关 loading 和防重复逻辑共享。
+    const promise = (async () => {
+      try {
+        // output 存储后端启停操作返回的可读反馈。
+        const output = await apiSetPluginEnabled({
+          tool,
+          pluginId: plugin.id,
+          scope: plugin.scope,
+          enabled,
+          claudeHome,
+          codexHome,
+        });
+        set((state) => ({
+          pluginPage: {
+            ...state.pluginPage,
+            toggle: {
+              target: plugin.id,
+              phase: "ok",
+              text: output || (enabled ? "已启用插件" : "已禁用插件"),
+            },
+          },
+        }));
+        await get().checkPluginUpdates(tool);
+      } catch (error) {
+        set((state) => ({
+          pluginPage: {
+            ...state.pluginPage,
+            toggle: { target: plugin.id, phase: "err", text: String(error) },
+          },
+        }));
+      } finally {
+        set((state) => ({
+          pluginPage: {
+            ...state.pluginPage,
+            toggling: cleanTogglingMap(state.pluginPage.toggling, key),
+          },
+        }));
+      }
+    })();
+
+    set((state) => ({
+      pluginPage: {
+        ...state.pluginPage,
+        toggling: {
+          ...state.pluginPage.toggling,
+          [key]: { loading: true, promise },
+        },
+      },
+    }));
+
+    return promise;
+  },
+
   // 查询指定工具的 npm 最新版本；已有同工具查询时复用 Promise，保证切 tab 后进度不丢。
   checkLatestToolVersion: (toolId) => {
     // existingPromise 存储当前工具已在执行的版本查询 Promise。
@@ -389,15 +513,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     // promise 存储本次查询任务，写入 store 后可跨 Dashboard 卸载继续完成。
     const promise = (async () => {
       try {
-        // result 存储后端查询 npm registry 后返回的最新版本信息。
-        const result = await checkToolLatestVersion(toolId);
+        // latestResult 存储后端查询 npm registry 后返回的最新版本信息。
+        const latestResult = await checkToolLatestVersion(toolId);
+        // tools 存储同步刷新后的本机 CLI 探测结果，避免页面继续展示旧缓存版本。
+        const tools = await detectTools();
         set((state) => ({
+          tools,
           toolVersionChecks: {
             ...state.toolVersionChecks,
             [toolId]: {
               ...(state.toolVersionChecks[toolId] ?? createIdleToolVersionCheck()),
               loading: false,
-              latestVersion: result.latest_version,
+              latestVersion: latestResult.latest_version,
               error: "",
               updateMessage: "",
             },

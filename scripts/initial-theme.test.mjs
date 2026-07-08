@@ -15,7 +15,7 @@ describe("initial theme paint", () => {
     const reactEntryIndex = html.indexOf('/src/main.tsx');
 
     expect(html).toContain('<html lang="zh-CN" class="dark">');
-    expect(html).toContain("background: rgb(20 20 20)");
+    expect(html).toContain("background: rgb(18 18 17)");
     expect(themeScriptIndex).toBeGreaterThanOrEqual(0);
     expect(reactEntryIndex).toBeGreaterThan(themeScriptIndex);
   });

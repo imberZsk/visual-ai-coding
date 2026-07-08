@@ -16,11 +16,30 @@ export function LoadingIcon({ className = "" }: { className?: string }) {
     <span
       data-testid="loading-icon"
       aria-hidden="true"
-      className={`inline-flex items-center justify-center leading-none ${className}`}
+      className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center align-middle leading-none ${className}`}
     >
       <Spin size="small" />
     </span>
   );
+}
+
+// PageShell 提供页面内容的统一宽度、内边距和垂直节奏。
+export function PageShell({
+  children,
+  className = "",
+}: {
+  children: ReactNode; // children 存储页面主体内容。
+  className?: string; // className 存储调用方需要追加的布局类名。
+}) {
+  // shellClassName 存储页面外壳的最终样式类。
+  const shellClassName = [
+    "mx-auto min-h-full w-full max-w-7xl px-6 py-6 lg:px-8",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return <div className={shellClassName}>{children}</div>;
 }
 
 // 卡片容器：复用 Ant Design Card 的边框、内边距与暗色主题适配。
@@ -31,7 +50,12 @@ export function Card({
   children: ReactNode; // 卡片内容
   className?: string; // 额外样式类
 }) {
-  return <AntCard size="small" className={className}>{children}</AntCard>;
+  // cardClassName 存储项目统一卡片样式和调用方样式。
+  const cardClassName = ["border-border bg-panel shadow-none", className]
+    .filter(Boolean)
+    .join(" ");
+
+  return <AntCard size="small" className={cardClassName}>{children}</AntCard>;
 }
 
 // 页面标题区：主标题 + 可选副标题，统一页面顶部留白
@@ -45,14 +69,14 @@ export function PageHeader({
   actions?: ReactNode; // 右侧操作区（按钮等）
 }) {
   return (
-    <div className="mb-5 flex items-start justify-between gap-4">
-      <div>
-        <h1 className="text-xl font-semibold text-text-main">{title}</h1>
+    <div className="mb-6 flex items-start justify-between gap-4 border-b border-border pb-5">
+      <div className="min-w-0">
+        <h1 className="truncate text-2xl font-semibold text-text-main">{title}</h1>
         {subtitle && (
-          <p className="mt-1 text-sm text-text-muted">{subtitle}</p>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-text-muted">{subtitle}</p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
   );
 }
@@ -60,7 +84,7 @@ export function PageHeader({
 // 区块小标题：用于卡片内分段
 export function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-2 text-sm font-medium text-text-main">{children}</div>
+    <div className="mb-2 text-sm font-semibold text-text-main">{children}</div>
   );
 }
 
@@ -151,7 +175,7 @@ export function Badge({
 // 空状态占位：复用 Ant Design Empty，统一列表/数据为空时的视觉表达。
 export function EmptyState({ text }: { text: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-border py-8">
+    <div className="rounded-lg border border-dashed border-border bg-panel-soft/45 py-8">
       <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={text} />
     </div>
   );

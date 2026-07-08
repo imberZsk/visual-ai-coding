@@ -4,7 +4,7 @@ import { CLAUDE_SETTINGS_SCHEMA } from "../config/claudeSettingsSchema";
 import { CODEX_CONFIG_SCHEMA } from "../config/codexConfigSchema";
 import CapabilityConfigEditor from "../components/CapabilityConfigEditor";
 import ConfigEditor from "../components/ConfigEditor";
-import { PageHeader } from "../components/ui";
+import { PageHeader, PageShell } from "../components/ui";
 
 // CLAUDE_AGENT_FIELD_PATHS 存储 Claude settings 中与 Agents 能力相关的字段路径。
 const CLAUDE_AGENT_FIELD_PATHS = [
@@ -48,7 +48,7 @@ export default function AgentsPage() {
   const codexAgentsSpec = findConfigSpec(CODEX_CONFIG_FILES, "codex-agents");
 
   return (
-    <div className="p-6">
+    <PageShell>
       <PageHeader
         title="Agents"
         subtitle="集中管理 Claude 与 Codex 的全局 agent 指令、默认 agent 和 agent 行为配置"
@@ -71,6 +71,6 @@ export default function AgentsPage() {
           title="Codex Agents"
         />
       </div>
-    </div>
+    </PageShell>
   );
 }

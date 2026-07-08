@@ -94,9 +94,9 @@ describe("ClaudeOutputStyleField", () => {
     await user.click(screen.getByRole("button", { name: "创建“毒舌”风格文件" }));
 
     // createButton 存储进入 loading 状态的创建按钮。
-    const createButton = screen.getByRole("button", { name: "创建中…" });
+    const createButton = screen.getByRole("button", { name: /创建中/ });
     expect(createButton).toBeDisabled();
-    expect(within(createButton).getByTestId("loading-icon")).toBeInTheDocument();
+    expect(within(createButton).getByRole("img", { name: "loading" })).toBeInTheDocument();
 
     createDeferredValue.resolve({
       name: "毒舌",

@@ -1,5 +1,4 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfigFileSpec } from "../config";
 import { CODEX_CONFIG_SCHEMA } from "../config/codexConfigSchema";
@@ -37,6 +36,79 @@ function createDeferred<T>() {
     resolve: resolveDeferred,
     reject: rejectDeferred,
   };
+}
+
+// getFieldToggle 按字段标题找到对应的 Ant Design Collapse 头部按钮。
+// title 参数存储字段中文标题。
+function getFieldToggle(title: string): HTMLElement {
+  // titleNode 存储字段标题文本节点。
+  const titleNode = screen.getByText(title);
+  // toggleNode 存储字段标题所在的 Collapse header。
+  const toggleNode = titleNode.closest(".ant-collapse-header") as HTMLElement | null;
+
+  if (!toggleNode) {
+    throw new Error(`未找到 ${title} 的配置项折叠头`);
+  }
+
+  return toggleNode;
+}
+
+// clickFieldToggle 点击指定字段的 Ant Design Collapse 头部。
+// title 参数存储字段中文标题。
+function clickFieldToggle(title: string) {
+  fireEvent.click(getFieldToggle(title));
+}
+
+// getFieldShell 按字段标题找到对应的配置项根节点。
+// title 参数存储字段中文标题。
+function getFieldShell(title: string): HTMLElement {
+  // toggleNode 存储字段折叠头。
+  const toggleNode = getFieldToggle(title);
+  // shellNode 存储字段对应的 Ant Design Collapse 根节点。
+  const shellNode = toggleNode.closest(".visual-config-field") as HTMLElement | null;
+
+  if (!shellNode) {
+    throw new Error(`未找到 ${title} 的配置项容器`);
+  }
+
+  return shellNode;
+}
+
+// getAntSelectText 读取指定字段 Ant Design Select 当前展示的文本。
+// title 参数存储字段中文标题。
+function getAntSelectText(title: string): string {
+  // fieldShell 存储字段对应的配置项根节点。
+  const fieldShell = getFieldShell(title);
+  // selectionNode 存储 Ant Design Select 当前选中项展示节点。
+  const selectionNode = fieldShell.querySelector(".ant-select-selection-item");
+
+  return selectionNode?.textContent ?? "";
+}
+
+// chooseAntSelectOption 打开当前页面的 Ant Design Select 并选择指定选项。
+// optionText 参数存储要点击的选项展示文本。
+async function chooseAntSelectOption(optionText: string) {
+  // selectorNode 存储当前展开字段里的 Select 可点击区域。
+  const selectorNode = document.querySelector(".ant-select-selector") as HTMLElement | null;
+
+  if (!selectorNode) {
+    throw new Error("未找到 Ant Design Select 控件");
+  }
+
+  fireEvent.mouseDown(selectorNode);
+
+  // optionNode 存储下拉弹层中匹配目标文本的选项内容节点。
+  let optionNode: HTMLElement | null = null;
+  await waitFor(() => {
+    // optionNodes 存储当前弹层中的全部选项内容节点。
+    const optionNodes = Array.from(
+      document.body.querySelectorAll(".ant-select-item-option-content")
+    ) as HTMLElement[];
+    optionNode = optionNodes.find((node) => node.textContent?.includes(optionText)) ?? null;
+    expect(optionNode).not.toBeNull();
+  });
+
+  fireEvent.click(optionNode!.closest(".ant-select-item-option") as HTMLElement);
 }
 
 vi.mock("../store", () => ({
@@ -185,7 +257,7 @@ describe("VisualConfigEditor", () => {
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
     // modelFieldButton 存储默认模型字段卡片的折叠按钮，用于确认中文标题旁显示真实配置 key。
-    const modelFieldButton = screen.getByRole("button", { name: "默认模型 配置项" });
+    const modelFieldButton = getFieldToggle("默认模型");
     expect(within(modelFieldButton).getByText("model")).toBeInTheDocument();
     expect(screen.queryByDisplayValue("opus")).not.toBeInTheDocument();
     fireEvent.click(modelFieldButton);
@@ -197,57 +269,149 @@ describe("VisualConfigEditor", () => {
     expect(screen.getByText('true')).toBeInTheDocument();
   });
 
+  it("renders visual config controls with Ant Design building blocks", async () => {
+    // selectSchema 存储带模型下拉框的 schema，用于确认配置项候选值走 Ant Design Select。
+    const selectSchema: VisualConfigSchema = {
+      ...schema,
+      groups: [
+        {
+          ...schema.groups[0],
+          fields: schema.groups[0].fields.map((field) =>
+            field.path === "model"
+              ? {
+                  ...field,
+                  control: "select",
+                  options: [{ value: "opus", label: "opus" }],
+                }
+              : field
+          ),
+        },
+      ],
+    };
+    invokeMock.mockResolvedValueOnce({
+      id: "claude-settings",
+      title: "settings.json",
+      path: "/Users/test/.claude/settings.json",
+      format: "json",
+      content: JSON.stringify({ model: "opus", env: { FOO: "bar" } }, null, 2),
+      exists: true,
+      readonly: false,
+    });
+
+    // rendered 存储编辑器渲染结果，用于检查 Ant Design 类名结构。
+    const rendered = render(<VisualConfigEditor spec={spec} schema={selectSchema} />);
+
+    expect(await screen.findByText("默认模型")).toBeInTheDocument();
+    expect(rendered.container.querySelector(".ant-collapse")).toBeInTheDocument();
+    expect(rendered.container.querySelector(".ant-segmented")).toBeInTheDocument();
+
+    clickFieldToggle("默认模型");
+
+    expect(rendered.container.querySelector(".ant-select")).toBeInTheDocument();
+
+    clickFieldToggle("环境变量");
+
+    expect(screen.getByLabelText("环境变量 内容")).toBeInTheDocument();
+    expect(rendered.container.querySelector(".visual-config-inline-textarea")).toBeInTheDocument();
+    expect(document.body.querySelector(".ant-modal")).not.toBeInTheDocument();
+  });
+
+  it("renders a clearer file module header and visual toolbar", async () => {
+    // rendered 存储编辑器渲染结果，用于检查配置文件模块的结构类名。
+    const rendered = render(<VisualConfigEditor spec={spec} schema={schema} />);
+
+    expect(await screen.findByText("默认模型")).toBeInTheDocument();
+
+    // moduleNode 存储配置文件模块根节点，用于确认文件级信息被独立承载。
+    const moduleNode = screen.getByTestId("visual-config-module");
+    expect(moduleNode).toHaveClass("visual-config-module");
+    expect(within(moduleNode).getByText("settings.json")).toBeInTheDocument();
+
+    // moduleMeta 存储文件说明与绝对路径的元信息区，避免标题行继续堆挤所有信息。
+    const moduleMeta = rendered.container.querySelector(".visual-config-module-meta");
+    expect(moduleMeta).not.toBeNull();
+    expect(moduleMeta).toHaveTextContent("Claude settings");
+    expect(moduleMeta).toHaveTextContent("/Users/test/.claude/settings.json");
+
+    // toolbarNode 存储字段排序工具条，保证排序控制从字段列表中被清楚分离出来。
+    const toolbarNode = screen.getByTestId("visual-config-toolbar");
+    expect(toolbarNode).toHaveClass("visual-config-toolbar");
+    expect(within(toolbarNode).getByText("字段排序")).toBeInTheDocument();
+  });
+
+  it("keeps the file header separate from the visual content panels", async () => {
+    // rendered 存储编辑器渲染结果，用于检查模块化布局不会回退为一个大外框。
+    const rendered = render(<VisualConfigEditor spec={spec} schema={schema} />);
+
+    expect(await screen.findByText("默认模型")).toBeInTheDocument();
+
+    // headerPanel 存储独立的文件头模块，只承载标题、路径和文件级操作。
+    const headerPanel = rendered.container.querySelector(".visual-config-header-panel");
+    expect(headerPanel).not.toBeNull();
+    expect(headerPanel).toHaveTextContent("settings.json");
+    expect(headerPanel!.querySelector(".visual-config-toolbar")).toBeNull();
+    expect(headerPanel!.querySelector(".visual-config-group")).toBeNull();
+
+    // contentStack 存储字段内容区，排序与分组应与文件头保持视觉间距。
+    const contentStack = rendered.container.querySelector(".visual-config-content-stack");
+    expect(contentStack).not.toBeNull();
+    expect(contentStack).toHaveClass("space-y-3");
+    expect(contentStack!.querySelector(".visual-config-toolbar")).toBeInTheDocument();
+    expect(contentStack!.querySelector(".visual-config-group")).toBeInTheDocument();
+
+    // directCards 存储配置模块下一层的 Ant Design Card；只有文件头应直接使用卡片，避免大卡片套全部内容。
+    const moduleNode = screen.getByTestId("visual-config-module");
+    const directCards = Array.from(moduleNode.children).filter((child) =>
+      child.classList.contains("ant-card")
+    );
+    expect(directCards).toHaveLength(1);
+  });
+
   it("shows the schema-declared default value next to a field", async () => {
     render(<VisualConfigEditor spec={spec} schema={schema} />);
 
     // autoUpdatesField 存储带 defaultValue 声明的自动更新字段标题节点。
     const autoUpdatesField = await screen.findByText("自动更新");
-    expect(within(autoUpdatesField.closest("button")!).getByText("默认值：true")).toBeInTheDocument();
+    expect(
+      within(autoUpdatesField.closest(".ant-collapse-header")!).getByText("默认值：true")
+    ).toBeInTheDocument();
     // modelField 存储未声明 defaultValue 的默认模型字段标题节点，不应展示默认值文案。
     const modelField = screen.getByText("默认模型");
-    expect(within(modelField.closest("button")!).queryByText(/默认值：/)).not.toBeInTheDocument();
+    expect(
+      within(modelField.closest(".ant-collapse-header")!).queryByText(/默认值：/)
+    ).not.toBeInTheDocument();
   });
 
-  it("uses an animated details container when expanding a field", async () => {
+  it("opens field details without a nested delayed animation", async () => {
     render(<VisualConfigEditor spec={spec} schema={schema} />);
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    clickFieldToggle("默认模型");
 
-    // detailsRegion 存储字段详情展开区域，用于确认折叠动画结构存在。
+    // detailsRegion 存储字段详情展开区域，用于确认不再存在二段式内层动画。
     const detailsRegion = screen.getByTestId("field-details-model");
     expect(detailsRegion).toHaveAttribute("data-expanded", "true");
-    await waitFor(() => {
-      expect(detailsRegion).toHaveAttribute("data-animation-state", "open");
-    });
-    expect(detailsRegion).toHaveClass("grid-rows-[1fr]");
-    expect(detailsRegion).toHaveClass("transition-[grid-template-rows,opacity,margin-top]");
+    expect(detailsRegion).toHaveAttribute("data-animation-state", "open");
+    expect(detailsRegion).toHaveClass("overflow-visible");
+    expect(detailsRegion.className).not.toContain("transition-[grid-template-rows");
   });
 
-  it("starts field expansion from a collapsed animation state before opening", async () => {
+  it("does not wait for a timer before showing expanded field details", async () => {
     render(<VisualConfigEditor spec={spec} schema={schema} />);
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    vi.useFakeTimers();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+      clickFieldToggle("默认模型");
     });
 
-    // detailsRegion 存储刚挂载的详情区域，用于确认展开动画从折叠态起步。
+    // detailsRegion 存储刚挂载的详情区域，展开后应立即进入可交互状态。
     const detailsRegion = screen.getByTestId("field-details-model");
-    expect(detailsRegion).toHaveAttribute("data-animation-state", "opening");
-    expect(detailsRegion).toHaveClass("grid-rows-[0fr]");
-
-    await act(async () => {
-      vi.advanceTimersByTime(20);
-    });
-
     expect(detailsRegion).toHaveAttribute("data-animation-state", "open");
-    expect(detailsRegion).toHaveClass("grid-rows-[1fr]");
+    expect(screen.getByDisplayValue("opus")).toBeInTheDocument();
   });
 
-  it("opens complex object fields in a large modal editor and applies edits", async () => {
+  it("edits complex object fields with an inline large textarea", async () => {
     invokeMock.mockResolvedValueOnce({
       id: "claude-settings",
       title: "settings.json",
@@ -261,19 +425,16 @@ describe("VisualConfigEditor", () => {
     render(<VisualConfigEditor spec={spec} schema={schema} />);
 
     expect(await screen.findByText("环境变量")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "环境变量 配置项" }));
-    fireEvent.click(screen.getByRole("button", { name: "打开环境变量编辑" }));
+    clickFieldToggle("环境变量");
 
-    expect(screen.getByRole("dialog", { name: "编辑环境变量" })).toBeInTheDocument();
-    // modalEditor 存储大弹窗中的环境变量 JSON 草稿。
-    const modalEditor = screen.getByLabelText("环境变量 内容") as HTMLTextAreaElement;
-    expect(modalEditor.value).toContain('"FOO": "bar"');
+    // inlineEditor 存储内联大文本框中的环境变量 JSON 草稿。
+    const inlineEditor = screen.getByLabelText("环境变量 内容") as HTMLTextAreaElement;
+    expect(inlineEditor.value).toContain('"FOO": "bar"');
 
-    fireEvent.change(modalEditor, {
+    fireEvent.change(inlineEditor, {
       target: { value: JSON.stringify({ FOO: "baz", NEW_FLAG: "1" }, null, 2) },
     });
-    fireEvent.click(screen.getByRole("button", { name: "应用到配置" }));
-    expect(screen.queryByRole("dialog", { name: "编辑环境变量" })).not.toBeInTheDocument();
+    expect(screen.getByText("未保存")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
@@ -284,6 +445,41 @@ describe("VisualConfigEditor", () => {
         format: "json",
       });
     });
+  });
+
+  it("blocks visual saves while an inline JSON editor is invalid", async () => {
+    invokeMock.mockResolvedValueOnce({
+      id: "claude-settings",
+      title: "settings.json",
+      path: "/Users/test/.claude/settings.json",
+      format: "json",
+      content: JSON.stringify({ model: "opus", env: { FOO: "bar" } }, null, 2),
+      exists: true,
+      readonly: false,
+    });
+
+    render(<VisualConfigEditor spec={spec} schema={schema} />);
+
+    expect(await screen.findByText("环境变量")).toBeInTheDocument();
+    clickFieldToggle("环境变量");
+
+    // inlineEditor 存储内联 JSON 编辑器，用于模拟用户输入不完整 JSON。
+    const inlineEditor = screen.getByLabelText("环境变量 内容") as HTMLTextAreaElement;
+    fireEvent.change(inlineEditor, {
+      target: { value: "{ invalid json" },
+    });
+
+    expect(screen.getByText(/JSON 格式不正确/)).toBeInTheDocument();
+    expect(screen.getByText("格式错误")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+
+    fireEvent.change(inlineEditor, {
+      target: { value: JSON.stringify({ FOO: "baz" }, null, 2) },
+    });
+
+    expect(screen.queryByText(/JSON 格式不正确/)).not.toBeInTheDocument();
+    expect(screen.queryByText("格式错误")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).not.toBeDisabled();
   });
 
   it("sorts configured fields first and hides uncommon unset fields by default", async () => {
@@ -312,17 +508,13 @@ describe("VisualConfigEditor", () => {
     // unsetField 存储普通未设置字段标题节点，用于比较排序位置。
     const unsetField = screen.getByText("自动更新");
 
-    fireEvent.click(screen.getByRole("button", { name: "未设置优先" }));
+    fireEvent.click(screen.getByRole("radio", { name: "未设置优先" }));
     expect(
       unsetField.compareDocumentPosition(configuredField) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: "默认顺序" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "默认顺序" }));
-    expect(
-      unsetField.compareDocumentPosition(configuredField) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "已设置优先" }));
+    fireEvent.click(screen.getByRole("radio", { name: "已设置优先" }));
     expect(
       configuredField.compareDocumentPosition(unsetField) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
@@ -363,7 +555,7 @@ describe("VisualConfigEditor", () => {
       expect(screen.getByRole("button", { name: "刷新" })).not.toBeDisabled();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    clickFieldToggle("默认模型");
     expect(screen.getByDisplayValue("haiku")).toBeInTheDocument();
   });
 
@@ -407,7 +599,7 @@ describe("VisualConfigEditor", () => {
       expect(invokeMock).toHaveBeenCalledTimes(2);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    clickFieldToggle("默认模型");
     expect(screen.getByDisplayValue("sonnet")).toBeInTheDocument();
   });
 
@@ -416,7 +608,7 @@ describe("VisualConfigEditor", () => {
 
     // input 存储默认模型输入框。
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    clickFieldToggle("默认模型");
     const input = screen.getByDisplayValue("opus");
     fireEvent.change(input, { target: { value: "sonnet" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
@@ -454,11 +646,11 @@ describe("VisualConfigEditor", () => {
     render(<VisualConfigEditor spec={spec} schema={schema} />);
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    clickFieldToggle("默认模型");
     fireEvent.change(screen.getByDisplayValue("opus"), { target: { value: "sonnet" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "自动更新 配置项" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "打开" }));
+    clickFieldToggle("自动更新");
+    fireEvent.click(screen.getByRole("switch", { name: "打开" }));
 
     fireEvent.click(screen.getByRole("button", { name: "保存默认模型" }));
 
@@ -505,7 +697,7 @@ describe("VisualConfigEditor", () => {
     render(<VisualConfigEditor spec={spec} schema={schema} />);
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    clickFieldToggle("默认模型");
 
     // modelInput 存储第一次编辑使用的模型输入控件。
     const modelInput = screen.getByDisplayValue("opus");
@@ -561,14 +753,9 @@ describe("VisualConfigEditor", () => {
     render(<VisualConfigEditor spec={spec} schema={selectSchema} />);
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    clickFieldToggle("默认模型");
 
-    // modelSelect 存储默认模型下拉选择控件。
-    const modelSelect = screen.getByRole("combobox");
-    expect(modelSelect).toHaveValue("custom-local-model");
-    expect(
-      screen.getByRole("option", { name: "custom-local-model（当前值）" })
-    ).toBeInTheDocument();
+    expect(getAntSelectText("默认模型")).toBe("custom-local-model（当前值）");
   });
 
   it("does not clip model select popovers inside expanded field details", async () => {
@@ -594,25 +781,19 @@ describe("VisualConfigEditor", () => {
     render(<VisualConfigEditor spec={spec} schema={selectSchema} />);
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
+    clickFieldToggle("默认模型");
 
-    // modelSelect 存储默认模型下拉选择控件。
-    const modelSelect = screen.getByRole("combobox");
     // detailsRegion 存储展开后的字段详情区域。
     const detailsRegion = screen.getByTestId("field-details-model");
-    // detailsContent 存储 select 所在的详情内容容器。
-    const detailsContent = modelSelect.parentElement;
+    // collapseBody 存储 Ant Design Collapse 的内容容器，避免 Select 弹层被父级裁切。
+    const collapseBody = detailsRegion.closest(".ant-collapse-content-box");
 
-    await waitFor(() => {
-      expect(detailsRegion).toHaveAttribute("data-animation-state", "open");
-    });
+    expect(detailsRegion).toHaveAttribute("data-animation-state", "open");
     expect(detailsRegion).toHaveClass("overflow-visible");
-    expect(detailsContent).toHaveClass("overflow-visible");
+    expect(collapseBody).toBeInTheDocument();
   });
 
   it("lets users choose a model from the dropdown and save it", async () => {
-    // user 存储模拟真实点击和下拉选择的用户事件工具。
-    const user = userEvent.setup();
     // selectSchema 存储模型字段为下拉控件的 schema。
     const selectSchema: VisualConfigSchema = {
       ...schema,
@@ -638,9 +819,9 @@ describe("VisualConfigEditor", () => {
     render(<VisualConfigEditor spec={spec} schema={selectSchema} />);
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "默认模型 配置项" }));
-    await user.selectOptions(screen.getByRole("combobox"), "sonnet5");
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    clickFieldToggle("默认模型");
+    await chooseAntSelectOption("sonnet5");
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("save_config_file", {
@@ -706,7 +887,7 @@ describe("VisualConfigEditor", () => {
     render(<VisualConfigEditor spec={spec} schema={schema} />);
 
     expect(await screen.findByText("输出风格")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "输出风格 配置项" }));
+    clickFieldToggle("输出风格");
 
     expect(await screen.findByText("“毒舌”未找到")).toBeInTheDocument();
     expect(screen.getByText("/Users/test/.claude/output-styles/毒舌.md")).toBeInTheDocument();
@@ -774,8 +955,8 @@ describe("VisualConfigEditor", () => {
     render(<VisualConfigEditor spec={codexSpec} schema={CODEX_CONFIG_SCHEMA} />);
 
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
-    expect(screen.getByRole("combobox")).toHaveValue("gpt-5");
+    clickFieldToggle("默认模型");
+    expect(getAntSelectText("默认模型")).toBe("gpt-5");
     expect(screen.queryByText("未保存")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
   });
@@ -795,9 +976,8 @@ describe("VisualConfigEditor", () => {
 
     // modelInput 存储默认模型下拉控件。
     expect(await screen.findByText("默认模型")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "默认模型 配置项" }));
-    const modelInput = screen.getByRole("combobox");
-    fireEvent.change(modelInput, { target: { value: "gpt-5-codex" } });
+    clickFieldToggle("默认模型");
+    await chooseAntSelectOption("gpt-5-codex");
 
     fireEvent.click(screen.getByRole("button", { name: /显示高级字段/ }));
     expect(screen.getByText("custom_flag")).toBeInTheDocument();

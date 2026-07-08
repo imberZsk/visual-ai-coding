@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Alert, Button as AntButton, Empty, Input, Segmented } from "antd";
 import * as TOML from "smol-toml";
 import { readConfigFile, saveConfigFile, openInVscode, revealInFinder } from "../api";
 import type { ConfigFileSpec } from "../config";
@@ -25,7 +26,7 @@ interface FieldRenderState {
   isSet: boolean; // isSet 标记该字段是否已经显式写入配置。
 }
 
-type FieldSortOrder = "configured" | "unset" | "schema";
+type FieldSortOrder = "configured" | "unset";
 
 // 拼接工具根目录与相对子路径。
 // home 参数存储工具根目录，relPath 参数存储配置文件相对子路径。
@@ -132,10 +133,6 @@ function compareFieldState(
   right: FieldRenderState,
   sortOrder: FieldSortOrder
 ): number {
-  if (sortOrder === "schema") {
-    return 0;
-  }
-
   if (left.isSet === right.isSet) {
     return 0;
   }
@@ -186,6 +183,8 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   const [showUnknownFields, setShowUnknownFields] = useState(false);
   // fieldSortOrder 存储可视化字段当前排序模式。
   const [fieldSortOrder, setFieldSortOrder] = useState<FieldSortOrder>("configured");
+  // invalidFieldPathSet 存储当前内联编辑器存在格式错误的字段路径集合。
+  const [invalidFieldPathSet, setInvalidFieldPathSet] = useState<Set<string>>(() => new Set());
   // home 存储当前工具配置根目录。
   const home = spec.tool === "claude" ? prefs?.claude_home || "" : prefs?.codex_home || "";
   // absPath 存储配置文件绝对路径。
@@ -211,6 +210,8 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
     ((activeView === "raw" && rawDraft !== baselineRawText) ||
       (activeView === "visual" &&
         serializeConfigContent(configDraft, schema.format) !== baselineVisualText));
+  // hasInvalidVisualFields 标记当前可视化视图里是否存在格式错误字段。
+  const hasInvalidVisualFields = activeView === "visual" && invalidFieldPathSet.size > 0;
 
   // applyParsedDraft 负责把解析成功的对象同步到 visual 状态，并清理解析错误。
   // content 参数存储原始配置文本。
@@ -229,6 +230,7 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
     setExpandedFieldPath(null);
     setShowMoreFields(false);
     setShowUnknownFields(false);
+    setInvalidFieldPathSet(new Set());
 
     try {
       // loadedFile 存储后端读取到的配置文件内容。
@@ -312,6 +314,7 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
       setRawDraft(serializeConfigContent(nextConfig, schema.format));
       return nextConfig;
     });
+    handleFieldValidationChange(path, true);
   }
 
   // toggleFieldExpanded 负责切换单个配置项的展开状态；WHY：产品要求同一时刻只专注一项配置，
@@ -362,6 +365,34 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
     });
   }
 
+  // handleFieldValidationChange 负责记录单字段内联编辑器的格式状态。
+  // path 参数存储字段路径，valid 参数标记当前字段草稿是否可安全写入配置。
+  function handleFieldValidationChange(path: string, valid: boolean) {
+    setInvalidFieldPathSet((currentInvalidFieldPathSet) => {
+      // hasPath 标记当前字段是否已经被记录为格式错误。
+      const hasPath = currentInvalidFieldPathSet.has(path);
+
+      if (valid && !hasPath) {
+        return currentInvalidFieldPathSet;
+      }
+
+      if (!valid && hasPath) {
+        return currentInvalidFieldPathSet;
+      }
+
+      // nextInvalidFieldPathSet 存储更新后的格式错误字段集合。
+      const nextInvalidFieldPathSet = new Set(currentInvalidFieldPathSet);
+
+      if (valid) {
+        nextInvalidFieldPathSet.delete(path);
+      } else {
+        nextInvalidFieldPathSet.add(path);
+      }
+
+      return nextInvalidFieldPathSet;
+    });
+  }
+
   // handleRefresh 负责响应用户点击刷新按钮，重新读取当前配置文件。
   function handleRefresh() {
     if (!home || loading) {
@@ -381,28 +412,16 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
     return !areFieldValuesEqual(currentValue, savedValue);
   }
 
-  // renderSortButton 负责渲染字段排序切换按钮。
-  // sortOrder 参数存储按钮对应的排序模式，label 参数存储按钮展示文案。
-  function renderSortButton(sortOrder: FieldSortOrder, label: string) {
-    // active 标记该排序按钮是否为当前选中状态。
-    const active = fieldSortOrder === sortOrder;
-    // activeClass 存储该排序按钮按选中状态计算出的样式。
-    const activeClass = active
-      ? "bg-accent text-white shadow-sm"
-      : "text-text-muted hover:bg-surface hover:text-text-main";
-
-    return (
-      <button
-        key={sortOrder}
-        aria-pressed={active}
-        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${activeClass}`}
-        type="button"
-        onClick={() => setFieldSortOrder(sortOrder)}
-      >
-        {label}
-      </button>
-    );
-  }
+  // sortOptions 存储字段排序 Segmented 控件的选项。
+  const sortOptions = [
+    { label: "已设置优先", value: "configured" },
+    { label: "未设置优先", value: "unset" },
+  ];
+  // viewOptions 存储可视化/原始文本视图切换 Segmented 控件的选项。
+  const viewOptions = [
+    { label: "可视化", value: "visual" },
+    { label: "原始文本", value: "raw" },
+  ];
 
   // renderField 负责渲染带折叠状态的单个字段。
   // fieldState 参数存储字段元数据、当前值和设置状态。
@@ -413,9 +432,16 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
     const fieldDirty = isFieldDirty(fieldState.field.path);
     // fieldSaving 标记当前字段是否正在单独保存。
     const fieldSaving = savingFieldPath === fieldState.field.path;
+    // fieldInvalid 标记当前字段内联编辑器是否存在格式错误。
+    const fieldInvalid = invalidFieldPathSet.has(fieldState.field.path);
     // fieldSaveDisabled 标记当前字段保存按钮是否应禁用。
     const fieldSaveDisabled =
-      !fieldDirty || loading || saving || savingFieldPath !== null || spec.readonly;
+      !fieldDirty ||
+      fieldInvalid ||
+      loading ||
+      saving ||
+      savingFieldPath !== null ||
+      spec.readonly;
 
     return (
       <FieldRenderer
@@ -429,6 +455,9 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
         onToggle={() => toggleFieldExpanded(fieldState.field.path)}
         hidden={fieldHidden}
         onToggleHidden={() => toggleFieldHidden(fieldState.field.path)}
+        onValidationChange={(valid) =>
+          handleFieldValidationChange(fieldState.field.path, valid)
+        }
         home={home}
         showSaveButton={!spec.readonly}
         saveDisabled={fieldSaveDisabled}
@@ -444,6 +473,7 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   async function handleSwitchToVisual() {
     try {
       applyParsedDraft(rawDraft);
+      setInvalidFieldPathSet(new Set());
       setActiveView("visual");
     } catch (error) {
       // 用户手动改坏 raw 内容时，保留在 raw 视图并明确提示，避免切视图时把内容丢掉。
@@ -456,6 +486,11 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   // handleSave 负责保存当前视图对应的草稿内容。
   async function handleSave() {
     if (!file) {
+      return;
+    }
+
+    if (hasInvalidVisualFields) {
+      setMessage({ type: "err", text: "请先修正格式错误的配置项" });
       return;
     }
 
@@ -495,7 +530,13 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   // handleFieldSave 负责只保存单个可视化字段，并保留其他字段的未保存草稿状态。
   // path 参数存储要保存的字段路径，title 参数存储字段标题用于提示用户保存结果。
   async function handleFieldSave(path: string, title: string) {
-    if (!file || spec.readonly || saving || savingFieldPath !== null) {
+    if (
+      !file ||
+      spec.readonly ||
+      saving ||
+      savingFieldPath !== null ||
+      invalidFieldPathSet.has(path)
+    ) {
       return;
     }
 
@@ -541,212 +582,230 @@ export default function VisualConfigEditor({ spec, schema }: VisualConfigEditorP
   }
 
   return (
-    <Card>
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-text-main">{spec.title}</span>
-            <Badge tone="info">{schema.format}</Badge>
-            {spec.readonly && <Badge tone="warning">只读</Badge>}
-            {file && !file.exists && <Badge tone="neutral">文件不存在</Badge>}
-            {dirty && <Badge tone="success">未保存</Badge>}
-            {parseError && <Badge tone="warning">解析失败</Badge>}
-          </div>
-          <div className="mt-1 truncate text-xs text-text-muted" title={absPath}>
-            {spec.desc} · {absPath}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button onClick={handleRefresh} variant="default" loading={loading} title="重新读取当前配置">
-            <span aria-hidden="true">↻</span>
-            刷新
-          </Button>
-          <Button onClick={handleReveal} variant="ghost" title="在 Finder 中显示">
-            Finder
-          </Button>
-          <Button onClick={handleOpenVscode} variant="default" title="在 VSCode 打开">
-            VSCode
-          </Button>
-          <Button
-            onClick={() => {
-              void handleSwitchToVisual();
-            }}
-            variant={activeView === "visual" ? "primary" : "default"}
-            disabled={loading}
-          >
-            可视化
-          </Button>
-          <Button
-            onClick={() => setActiveView("raw")}
-            variant={activeView === "raw" ? "primary" : "default"}
-            disabled={loading}
-          >
-            原始文本
-          </Button>
-          {!spec.readonly && (
-            <Button
-              onClick={handleSave}
-              variant="primary"
-              disabled={savingFieldPath !== null || !dirty}
-              loading={saving}
+    <section data-testid="visual-config-module" className="visual-config-module space-y-3">
+      <Card className="visual-config-header-panel">
+        <div className="visual-config-module-header flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-base font-semibold text-text-main">{spec.title}</span>
+              <Badge tone="info">{schema.format}</Badge>
+              {spec.readonly && <Badge tone="warning">只读</Badge>}
+              {file && !file.exists && <Badge tone="neutral">文件不存在</Badge>}
+              {dirty && <Badge tone="success">未保存</Badge>}
+              {parseError && <Badge tone="warning">解析失败</Badge>}
+              {hasInvalidVisualFields && <Badge tone="warning">格式错误</Badge>}
+            </div>
+            <div
+              className="visual-config-module-meta mt-2 flex flex-col gap-1 text-xs sm:flex-row sm:flex-wrap sm:items-center"
+              title={absPath}
             >
-              保存
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-8 text-sm text-text-muted">
-          <LoadingIcon className="h-3.5 w-3.5" />
-          <span>加载中…</span>
-        </div>
-      ) : parseError && activeView === "raw" ? (
-        <div>
-          <div className="mb-2">
-            <div className="text-sm text-red-500">配置解析失败</div>
-            <div className="text-xs text-text-muted">{parseError}</div>
-          </div>
-          <textarea
-            className="h-72 w-full resize-y rounded-lg border border-border bg-surface p-3 font-mono text-xs leading-relaxed text-text-main outline-none focus:border-accent"
-            value={rawDraft}
-            onChange={(event) => setRawDraft(event.target.value)}
-          />
-        </div>
-      ) : activeView === "visual" ? (
-        <div className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface/60 px-3 py-2">
-            <span className="text-xs text-text-muted">排序</span>
-            <div className="inline-flex rounded-lg border border-border bg-panel p-0.5">
-              {renderSortButton("configured", "已设置优先")}
-              {renderSortButton("unset", "未设置优先")}
-              {renderSortButton("schema", "默认顺序")}
+              <span>{spec.desc}</span>
+              <span className="hidden text-border-strong sm:inline">/</span>
+              <span className="min-w-0 break-all font-mono">{absPath}</span>
             </div>
           </div>
-          {schema.groups.map((group) => {
-            // fieldStates 存储当前分组所有字段的渲染状态。
-            const fieldStates = group.fields.map((field) => {
-              // fieldValue 存储当前字段路径对应的值。
-              const fieldValue = getValueAtPath(configDraft, field.path);
-              return {
-                field,
-                value: fieldValue,
-                isSet: fieldValue !== undefined,
-              };
-            });
-            // primaryFieldStates 存储默认展示的字段，已设置字段会排在未设置字段之前。
-            const primaryFieldStates = fieldStates
-              .filter(
-                (fieldState) =>
-                  !hiddenFieldPathSet.has(fieldState.field.path) &&
-                  !isUncommonUnsetField(fieldState)
-              )
-              .sort((leftFieldState, rightFieldState) =>
-                compareFieldState(leftFieldState, rightFieldState, fieldSortOrder)
-              );
-            // moreFieldStates 存储默认隐藏的低频未设置字段，以及用户手动隐藏的字段。
-            const moreFieldStates = fieldStates
-              .filter(
-                (fieldState) =>
-                  hiddenFieldPathSet.has(fieldState.field.path) ||
-                  isUncommonUnsetField(fieldState)
-              )
-              .sort((leftFieldState, rightFieldState) =>
-                compareFieldState(leftFieldState, rightFieldState, fieldSortOrder)
-              );
+          <div className="visual-config-module-actions flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+            <Button
+              onClick={handleRefresh}
+              variant="default"
+              loading={loading}
+              title="重新读取当前配置"
+            >
+              <span aria-hidden="true">↻</span>
+              刷新
+            </Button>
+            <Button onClick={handleReveal} variant="ghost" title="在 Finder 中显示">
+              Finder
+            </Button>
+            <Button onClick={handleOpenVscode} variant="default" title="在 VSCode 打开">
+              VSCode
+            </Button>
+            <Segmented
+              disabled={loading}
+              options={viewOptions}
+              value={activeView}
+              onChange={(nextView) => {
+                if (nextView === "visual") {
+                  void handleSwitchToVisual();
+                  return;
+                }
 
-            return (
-              <section key={group.id}>
-                <div className="mb-2">
-                  <h3 className="text-sm font-medium text-text-main">{group.title}</h3>
-                  <p className="text-xs text-text-muted">{group.description}</p>
+                setActiveView("raw");
+              }}
+            />
+            {!spec.readonly && (
+              <Button
+                onClick={handleSave}
+                variant="primary"
+                disabled={savingFieldPath !== null || hasInvalidVisualFields || !dirty}
+                loading={saving}
+              >
+                保存
+              </Button>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* loading 占位对齐内容区 h-72 高度：避免配置读取完成后从 py-8 小占位跳到完整编辑区，挤压下方卡片（CLS） */}
+      {loading ? (
+        <section className="visual-config-panel visual-config-state-panel flex h-72 items-center justify-center gap-2 p-4 text-sm text-text-muted">
+            <LoadingIcon className="h-3.5 w-3.5" />
+            <span>加载中…</span>
+        </section>
+      ) : parseError && activeView === "raw" ? (
+        <section className="visual-config-panel p-4">
+            <div className="mb-2">
+              <div className="text-sm text-danger">配置解析失败</div>
+              <div className="text-xs text-text-muted">{parseError}</div>
+            </div>
+            <Input.TextArea
+              className="visual-config-raw-textarea"
+              value={rawDraft}
+              spellCheck={false}
+              onChange={(event) => setRawDraft(event.target.value)}
+            />
+        </section>
+      ) : activeView === "visual" ? (
+        <div className="visual-config-content-stack space-y-3">
+            <div
+              data-testid="visual-config-toolbar"
+              className="visual-config-panel visual-config-toolbar flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+            >
+              <span className="text-xs font-medium text-text-muted">字段排序</span>
+              <Segmented
+                options={sortOptions}
+                size="small"
+                value={fieldSortOrder}
+                onChange={(nextSortOrder) => setFieldSortOrder(nextSortOrder as FieldSortOrder)}
+              />
+            </div>
+            {schema.groups.map((group) => {
+              // fieldStates 存储当前分组所有字段的渲染状态。
+              const fieldStates = group.fields.map((field) => {
+                // fieldValue 存储当前字段路径对应的值。
+                const fieldValue = getValueAtPath(configDraft, field.path);
+                return {
+                  field,
+                  value: fieldValue,
+                  isSet: fieldValue !== undefined,
+                };
+              });
+              // primaryFieldStates 存储默认展示的字段，已设置字段会排在未设置字段之前。
+              const primaryFieldStates = fieldStates
+                .filter(
+                  (fieldState) =>
+                    !hiddenFieldPathSet.has(fieldState.field.path) &&
+                    !isUncommonUnsetField(fieldState)
+                )
+                .sort((leftFieldState, rightFieldState) =>
+                  compareFieldState(leftFieldState, rightFieldState, fieldSortOrder)
+                );
+              // moreFieldStates 存储默认隐藏的低频未设置字段，以及用户手动隐藏的字段。
+              const moreFieldStates = fieldStates
+                .filter(
+                  (fieldState) =>
+                    hiddenFieldPathSet.has(fieldState.field.path) ||
+                    isUncommonUnsetField(fieldState)
+                )
+                .sort((leftFieldState, rightFieldState) =>
+                  compareFieldState(leftFieldState, rightFieldState, fieldSortOrder)
+                );
+
+              return (
+                <section key={group.id} className="visual-config-panel visual-config-group p-4">
+                  <div className="mb-3">
+                    <h3 className="text-sm font-semibold text-text-main">{group.title}</h3>
+                    <p className="mt-1 text-xs text-text-muted">{group.description}</p>
+                  </div>
+                  <div className="space-y-3">
+                    {primaryFieldStates.map((fieldState) => renderField(fieldState))}
+                    {moreFieldStates.length > 0 && (
+                      <div className="rounded-lg border border-dashed border-border bg-panel-soft/35 p-3">
+                        <AntButton
+                          aria-expanded={showMoreFields}
+                          size="small"
+                          type="link"
+                          onClick={toggleMoreFields}
+                        >
+                          {showMoreFields
+                            ? `隐藏更多配置（${moreFieldStates.length}）`
+                            : `显示更多配置（${moreFieldStates.length}）`}
+                        </AntButton>
+                        {showMoreFields && (
+                          <div className="mt-3 space-y-3">
+                            {moreFieldStates.map((fieldState) => renderField(fieldState))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+            <section className="visual-config-panel visual-config-group p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-text-main">高级字段</h3>
+                  <p className="mt-1 text-xs text-text-muted">未被当前 schema 覆盖的配置会保留在这里。</p>
                 </div>
-                <div className="space-y-3">
-                  {primaryFieldStates.map((fieldState) => renderField(fieldState))}
-                  {moreFieldStates.length > 0 && (
-                    <div className="rounded-lg border border-dashed border-border bg-surface/60 p-3">
-                      <button
-                        aria-expanded={showMoreFields}
-                        className="text-xs font-medium text-accent hover:text-text-main"
-                        type="button"
-                        onClick={toggleMoreFields}
-                      >
-                        {showMoreFields
-                          ? `隐藏更多配置（${moreFieldStates.length}）`
-                          : `显示更多配置（${moreFieldStates.length}）`}
-                      </button>
-                      {showMoreFields && (
-                        <div className="mt-3 space-y-3">
-                          {moreFieldStates.map((fieldState) => renderField(fieldState))}
-                        </div>
-                      )}
+                <AntButton
+                  aria-expanded={showUnknownFields}
+                  size="small"
+                  type="link"
+                  onClick={toggleUnknownFields}
+                >
+                  {showUnknownFields ? "隐藏高级字段" : "显示高级字段"}
+                </AntButton>
+              </div>
+              {showUnknownFields && (
+                <div className="rounded-lg border border-dashed border-border bg-panel-soft/30 p-3 text-xs text-text-muted">
+                  {unknownKeys.length === 0 ? (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有未知字段" />
+                  ) : (
+                    <div className="space-y-3">
+                      {unknownKeys.map((key) => {
+                        // unknownValue 存储当前未知字段在配置对象中的真实值。
+                        const unknownValue = getValueAtPath(configDraft, key);
+                        // unknownValueText 存储格式化后的未知字段文本，用于只读展示实际内容。
+                        const unknownValueText = formatUnknownFieldValue(unknownValue);
+
+                        return (
+                          <div key={key} className="rounded-lg border border-border bg-panel p-3">
+                            <div className="mb-2">
+                              <Badge tone="neutral">{key}</Badge>
+                            </div>
+                            <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-text-main">
+                              {unknownValueText}
+                            </pre>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-              </section>
-            );
-          })}
-          <section>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-medium text-text-main">高级字段</h3>
-                <p className="text-xs text-text-muted">未被当前 schema 覆盖的配置会保留在这里。</p>
-              </div>
-              <button
-                aria-expanded={showUnknownFields}
-                className="shrink-0 text-xs font-medium text-accent hover:text-text-main"
-                type="button"
-                onClick={toggleUnknownFields}
-              >
-                {showUnknownFields ? "隐藏高级字段" : "显示高级字段"}
-              </button>
-            </div>
-            {showUnknownFields && (
-              <div className="rounded-lg border border-dashed border-border p-3 text-xs text-text-muted">
-                {unknownKeys.length === 0 ? (
-                  <div>没有未知字段</div>
-                ) : (
-                  <div className="space-y-3">
-                    {unknownKeys.map((key) => {
-                      // unknownValue 存储当前未知字段在配置对象中的真实值。
-                      const unknownValue = getValueAtPath(configDraft, key);
-                      // unknownValueText 存储格式化后的未知字段文本，用于只读展示实际内容。
-                      const unknownValueText = formatUnknownFieldValue(unknownValue);
-
-                      return (
-                        <div key={key} className="rounded-lg border border-border bg-surface p-3">
-                          <div className="mb-2">
-                            <Badge tone="neutral">{key}</Badge>
-                          </div>
-                          <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-text-main">
-                            {unknownValueText}
-                          </pre>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
+              )}
+            </section>
         </div>
       ) : (
-        <textarea
-          className="h-72 w-full resize-y rounded-lg border border-border bg-surface p-3 font-mono text-xs leading-relaxed text-text-main outline-none focus:border-accent"
-          value={rawDraft}
-          onChange={(event) => setRawDraft(event.target.value)}
-        />
+        <section className="visual-config-panel p-4">
+          <Input.TextArea
+            className="visual-config-raw-textarea"
+            value={rawDraft}
+            spellCheck={false}
+            onChange={(event) => setRawDraft(event.target.value)}
+          />
+        </section>
       )}
 
       {message && (
-        <div
-          className={`mt-2 text-xs ${
-            message.type === "ok" ? "text-green-500" : "text-red-500"
-          }`}
-        >
-          {message.text}
-        </div>
+        <Alert
+          className="visual-config-message-panel"
+          message={message.text}
+          showIcon
+          type={message.type === "ok" ? "success" : "error"}
+        />
       )}
-    </Card>
+    </section>
   );
 }

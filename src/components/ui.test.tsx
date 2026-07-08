@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { Badge, Button, Card, EmptyState, LoadingIcon } from "./ui";
+import { Badge, Button, Card, EmptyState, LoadingIcon, PageShell } from "./ui";
 
 describe("shared UI primitives", () => {
   // 验证公共 loading 使用 Ant Design Spin，而不是项目内自绘 border spinner。
@@ -11,6 +11,9 @@ describe("shared UI primitives", () => {
     const loadingIcon = screen.getByTestId("loading-icon");
 
     expect(loadingIcon.querySelector(".ant-spin")).toBeInTheDocument();
+    expect(loadingIcon).toHaveClass("h-3.5");
+    expect(loadingIcon).toHaveClass("w-3.5");
+    expect(loadingIcon).toHaveClass("shrink-0");
     expect(loadingIcon).toHaveClass("items-center");
     expect(loadingIcon).toHaveClass("justify-center");
     expect(rendered.container.querySelector(".animate-spin")).not.toBeInTheDocument();
@@ -57,5 +60,16 @@ describe("shared UI primitives", () => {
     // emptyText 存储空状态文案节点，用于向上定位 Ant Design Empty 容器。
     const emptyText = screen.getByText("暂无数据");
     expect(emptyText.closest(".ant-empty")).toBeInTheDocument();
+  });
+
+  // 验证页面外壳提供统一宽度和内边距，避免各页面自行散落 p-6。
+  it("renders page shell with the console content rhythm", () => {
+    render(<PageShell>页面内容</PageShell>);
+
+    // shell 存储页面外壳节点，用于确认全局布局约束。
+    const shell = screen.getByText("页面内容");
+    expect(shell).toHaveClass("mx-auto");
+    expect(shell).toHaveClass("max-w-7xl");
+    expect(shell).toHaveClass("px-6");
   });
 });

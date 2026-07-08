@@ -85,3 +85,7 @@ Tailwind `darkMode: "class"`，语义色（surface/panel/accent/text-main 等）
 
 每个函数/方法、每个变量都必须加注释；非显而易见的 if/switch 分支注释业务场景；复杂逻辑/workaround 注释 WHY 而非 WHAT。现有代码严格遵循此风格，新增代码需保持一致。交流与文档使用中文。
 - 容易阻塞的任务需要异步处理，需要增加loading，统一loading
+
+## 开发
+
+开发的时候，强制考虑 antd 是否有合适的组件，优先使用 antd 组件实现

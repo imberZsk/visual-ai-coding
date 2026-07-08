@@ -1,4 +1,4 @@
-// 应用根组件：负责初始化全局状态、应用主题、渲染顶部导航与当前页面
+// 应用根组件：负责初始化全局状态、应用主题、渲染侧边导航与当前页面
 import { useEffect } from "react";
 import { useAppStore } from "./store";
 import { useTheme } from "./hooks/useTheme";
@@ -71,18 +71,21 @@ export default function App() {
   if (!loaded) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-text-muted">
-        <LoadingIcon className="text-accent" />
+        <LoadingIcon className="text-text-muted" />
         <span>加载中…</span>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-surface">
-      {/* 顶部导航栏 */}
+    <div
+      data-testid="app-shell"
+      className="flex h-full w-full flex-row overflow-hidden bg-surface text-text-main"
+    >
+      {/* 左侧控制台导航栏 */}
       <Sidebar />
-      {/* 下方内容区：可滚动 */}
-      <main className="relative flex-1 overflow-y-auto bg-surface">
+      {/* 右侧内容区：可滚动。scrollbar-gutter:stable 预留滚动条宽度，内容高度变化导致滚动条出现/消失时避免内容区横向跳动（CLS） */}
+      <main className="relative min-w-0 flex-1 overflow-y-auto bg-surface [scrollbar-gutter:stable]">
         <div key={activeTab} data-testid="tab-content" className="tab-content-enter">
           {renderPage(activeTab)}
         </div>

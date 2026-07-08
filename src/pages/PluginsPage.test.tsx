@@ -38,8 +38,10 @@ function createEmptyPluginPageState() {
     codex: createEmptyPluginToolState(),
     refreshingAll: false,
     update: null,
+    toggle: null,
     checking: {},
     updating: {},
+    toggling: {},
   };
 }
 
@@ -58,6 +60,21 @@ function getUpdateButtonInSection(sectionTitle: string): HTMLElement {
   return within(sectionElement).getByRole("button", { name: "拉取更新" });
 }
 
+// getPluginCard 按插件 ID 定位所在卡片，避免多个操作按钮和开关互相干扰。
+// pluginId 为插件完整 ID。
+function getPluginCard(pluginId: string): HTMLElement {
+  // pluginNode 存储插件 ID 文本节点，用于反向定位卡片。
+  const pluginNode = screen.getByText(pluginId);
+  // pluginCard 存储插件所在 Ant Design Card 根节点。
+  const pluginCard = pluginNode.closest(".ant-card");
+
+  if (!pluginCard) {
+    throw new Error(`未找到 ${pluginId} 对应的插件卡片`);
+  }
+
+  return pluginCard as HTMLElement;
+}
+
 describe("PluginsPage", () => {
   beforeEach(() => {
     window.api = {
@@ -71,6 +88,14 @@ describe("PluginsPage", () => {
         invokeMock("update_codex_marketplace", { marketplaceName }),
       updateCodexPlugin: (payload: { pluginId: string; marketplace: string }) =>
         invokeMock("update_codex_plugin", payload),
+      setPluginEnabled: (payload: {
+        tool: "claude" | "codex";
+        pluginId: string;
+        scope: string;
+        enabled: boolean;
+        claudeHome: string;
+        codexHome: string;
+      }) => invokeMock("set_plugin_enabled", payload),
       revealInFinder: (target: string) => invokeMock("reveal_in_finder", { target }),
     } as Window["api"];
     useAppStore.setState({
@@ -130,6 +155,9 @@ describe("PluginsPage", () => {
           ],
         });
       }
+      if (command === "set_plugin_enabled") {
+        return Promise.resolve("插件状态已更新");
+      }
       return Promise.resolve([]);
     });
   });
@@ -179,6 +207,174 @@ describe("PluginsPage", () => {
     expect(screen.getByText("browser@openai-bundled")).toBeInTheDocument();
     expect(screen.getByText("可更新")).toBeInTheDocument();
     expect(screen.getByText("已最新")).toBeInTheDocument();
+  });
+
+  // 验证插件卡片会展示启用开关，并在点击时调用后端启停 API。
+  it("toggles a Claude plugin through the plugin enabled switch", async () => {
+    // user 存储用户交互模拟器，用于触发插件开关。
+    const user = userEvent.setup();
+
+    render(<PluginsPage />);
+
+    expect(await screen.findByText("superpowers@superpowers-dev")).toBeInTheDocument();
+
+    // enabledSwitch 存储目标插件的启用开关。
+    const enabledSwitch = screen.getByRole("switch", {
+      name: "启用 superpowers@superpowers-dev",
+    });
+    expect(enabledSwitch).toBeChecked();
+
+    await user.click(enabledSwitch);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("set_plugin_enabled", {
+        tool: "claude",
+        pluginId: "superpowers@superpowers-dev",
+        scope: "user",
+        enabled: false,
+        claudeHome: "/Users/test/.claude",
+        codexHome: "/Users/test/.codex",
+      });
+    });
+  });
+
+  // 验证插件启停进行中只禁用当前插件开关，其他插件仍可操作。
+  it("shows loading only on the plugin enabled switch being toggled", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "check_claude_plugin_updates") {
+        return Promise.resolve({
+          tool: "claude",
+          raw_output: "{}",
+          diagnostics: "",
+          plugins: [
+            {
+              id: "superpowers@superpowers-dev",
+              name: "superpowers",
+              marketplace: "superpowers-dev",
+              current_version: "6.0.3",
+              available_version: "6.0.4",
+              scope: "user",
+              enabled: true,
+              install_path: "/tmp/superpowers",
+              last_updated: "",
+              update_status: "newer",
+            },
+            {
+              id: "workflow@superpowers-dev",
+              name: "workflow",
+              marketplace: "superpowers-dev",
+              current_version: "1.0.0",
+              available_version: "1.0.1",
+              scope: "user",
+              enabled: false,
+              install_path: "/tmp/workflow",
+              last_updated: "",
+              update_status: "newer",
+            },
+          ],
+        });
+      }
+      if (command === "check_codex_plugin_updates") {
+        return Promise.resolve({
+          tool: "codex",
+          raw_output: "{}",
+          diagnostics: "",
+          plugins: [],
+        });
+      }
+      if (command === "set_plugin_enabled") {
+        return toggleDeferred.promise;
+      }
+      return Promise.resolve([]);
+    });
+
+    // toggleDeferred 存储插件启停 Promise，用于保持开关 loading 中间态。
+    const toggleDeferred = createDeferred<string>();
+    // user 存储用户交互模拟器，用于触发指定插件开关。
+    const user = userEvent.setup();
+
+    render(<PluginsPage />);
+
+    expect(await screen.findByText("workflow@superpowers-dev")).toBeInTheDocument();
+
+    // firstCard 存储正在切换插件的卡片。
+    const firstCard = getPluginCard("superpowers@superpowers-dev");
+    // secondCard 存储未切换插件的卡片。
+    const secondCard = getPluginCard("workflow@superpowers-dev");
+    // firstSwitch 存储正在切换的插件开关。
+    const firstSwitch = within(firstCard).getByRole("switch", {
+      name: "启用 superpowers@superpowers-dev",
+    });
+    // secondSwitch 存储未切换的插件开关。
+    const secondSwitch = within(secondCard).getByRole("switch", {
+      name: "启用 workflow@superpowers-dev",
+    });
+
+    await user.click(firstSwitch);
+
+    expect(firstSwitch).toBeDisabled();
+    expect(secondSwitch).not.toBeDisabled();
+
+    await act(async () => {
+      toggleDeferred.resolve("done");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("superpowers@superpowers-dev 启停成功")).toBeInTheDocument();
+    });
+  });
+
+  // 验证插件启停失败时会展示错误提示。
+  it("shows an error alert when plugin toggle fails", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "check_claude_plugin_updates") {
+        return Promise.resolve({
+          tool: "claude",
+          raw_output: "{}",
+          diagnostics: "",
+          plugins: [
+            {
+              id: "superpowers@superpowers-dev",
+              name: "superpowers",
+              marketplace: "superpowers-dev",
+              current_version: "6.0.3",
+              available_version: "6.0.4",
+              scope: "user",
+              enabled: true,
+              install_path: "/tmp/superpowers",
+              last_updated: "",
+              update_status: "newer",
+            },
+          ],
+        });
+      }
+      if (command === "check_codex_plugin_updates") {
+        return Promise.resolve({
+          tool: "codex",
+          raw_output: "{}",
+          diagnostics: "",
+          plugins: [],
+        });
+      }
+      if (command === "set_plugin_enabled") {
+        return Promise.reject("切换插件失败");
+      }
+      return Promise.resolve([]);
+    });
+
+    // user 存储用户交互模拟器，用于触发插件开关。
+    const user = userEvent.setup();
+
+    render(<PluginsPage />);
+
+    expect(await screen.findByText("superpowers@superpowers-dev")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("switch", { name: "启用 superpowers@superpowers-dev" })
+    );
+
+    expect(await screen.findByText("superpowers@superpowers-dev 启停失败")).toBeInTheDocument();
+    expect(screen.getByText("切换插件失败")).toBeInTheDocument();
   });
 
   // 验证插件页会把 CLI 返回的 ISO 时间转换为中国时区中文格式，避免直接展示 T/Z 等原始标记。

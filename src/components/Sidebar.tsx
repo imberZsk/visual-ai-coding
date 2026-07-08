@@ -1,192 +1,201 @@
-// 顶部导航栏：页签切换 + 主题快速切换，布局参考 visual-worktree
-import { CloseOutlined, DesktopOutlined, MoonOutlined, SettingOutlined, SunOutlined } from "@ant-design/icons";
-import { useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+// 左侧控制台导航栏：承载主模块切换、主题快捷切换与设置抽屉入口
+import {
+  ApiOutlined,
+  AppstoreOutlined,
+  CodeOutlined,
+  DashboardOutlined,
+  DesktopOutlined,
+  ExperimentOutlined,
+  FileSearchOutlined,
+  MoonOutlined,
+  RobotOutlined,
+  SettingOutlined,
+  SunOutlined,
+  ThunderboltOutlined,
+  ToolOutlined,
+} from "@ant-design/icons";
+import { useState, type ReactNode } from "react";
+import { Button as AntButton, Drawer } from "antd";
 import { useAppStore } from "../store";
 import { NAV_ITEMS } from "../config";
 import { SettingsContent } from "../pages/SettingsPage";
 
-// 主题模式循环顺序：light → dark → system
+// 侧边栏导航项结构：id 对应页面标识，label 为展示文案，icon 为 Ant Design 图标。
+interface SidebarNavItem {
+  id: string; // id 存储页面标识，写入偏好的 last_active_tab。
+  label: string; // label 存储导航展示名称和无障碍名称。
+  icon: ReactNode; // icon 存储当前导航项使用的 Ant Design 图标。
+}
+
+// OVERVIEW_NAV_ITEM 存储概览页入口，概览是默认页但不在配置里的工具导航列表中。
+const OVERVIEW_NAV_ITEM: SidebarNavItem = {
+  id: "dashboard",
+  label: "概览",
+  icon: <DashboardOutlined aria-hidden="true" />,
+};
+
+// NAV_ITEM_ICONS 存储各页面对应的统一线性图标。
+const NAV_ITEM_ICONS: Record<string, ReactNode> = {
+  claude: <CodeOutlined aria-hidden="true" />,
+  codex: <ThunderboltOutlined aria-hidden="true" />,
+  hooks: <ApiOutlined aria-hidden="true" />,
+  mcp: <ToolOutlined aria-hidden="true" />,
+  agents: <RobotOutlined aria-hidden="true" />,
+  plugins: <AppstoreOutlined aria-hidden="true" />,
+  skills: <FileSearchOutlined aria-hidden="true" />,
+};
+
+// THEME_CYCLE 存储主题模式循环顺序：light → dark → system。
 const THEME_CYCLE = ["light", "dark", "system"] as const;
 
-// 主题模式对应的 Ant Design 图标。
+// THEME_ICON 存储当前主题模式对应的 Ant Design 图标。
 const THEME_ICON: Record<string, ReactNode> = {
   light: <SunOutlined aria-hidden="true" />,
   dark: <MoonOutlined aria-hidden="true" />,
   system: <DesktopOutlined aria-hidden="true" />,
 };
 
-// 下一主题模式对应的无障碍提示。
+// NEXT_THEME_LABEL 存储主题快捷按钮的下一步动作说明。
 const NEXT_THEME_LABEL: Record<string, string> = {
   light: "切换到深色主题",
   dark: "切换到跟随系统主题",
   system: "切换到浅色主题",
 };
 
-interface ActiveIndicatorStyle {
-  width: number; // width 存储当前激活 tab 按钮的像素宽度。
-  left: number; // left 存储当前激活 tab 按钮相对导航容器的左偏移。
+// createSidebarNavItems 将配置里的主导航转换为侧边栏导航项。
+function createSidebarNavItems(): SidebarNavItem[] {
+  // toolNavItems 存储配置导航项补齐图标后的结果。
+  const toolNavItems = NAV_ITEMS.map((item) => ({
+    id: item.id,
+    label: item.label,
+    icon: NAV_ITEM_ICONS[item.id] ?? <ExperimentOutlined aria-hidden="true" />,
+  }));
+
+  return [OVERVIEW_NAV_ITEM, ...toolNavItems];
 }
 
-// 顶部导航组件
+// SidebarNavButtonProps 描述单个侧边栏导航按钮的渲染参数。
+interface SidebarNavButtonProps {
+  item: SidebarNavItem; // item 存储当前要渲染的导航项。
+  active: boolean; // active 标记当前导航项是否对应正在展示的页面。
+  onSelect: (id: string) => void; // onSelect 存储点击后切换页面的回调。
+}
+
+// SidebarNavButton 渲染单个主导航入口，使用原生 button 以精确控制选中态和焦点态。
+function SidebarNavButton({ item, active, onSelect }: SidebarNavButtonProps) {
+  // activeClassName 存储当前项选中时的强调样式。
+  const activeClassName = active
+    ? "border-text-main bg-panel-soft text-text-main shadow-sm"
+    : "border-transparent text-text-muted hover:border-border-strong hover:bg-panel-soft hover:text-text-main";
+  // buttonClassName 存储导航按钮的完整 className。
+  const buttonClassName = [
+    "group flex h-10 w-full cursor-pointer items-center gap-3 rounded-md border-l-2 px-3 text-left text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-strong max-md:justify-center max-md:px-0",
+    activeClassName,
+  ].join(" ");
+
+  return (
+    <button
+      type="button"
+      aria-current={active ? "page" : undefined}
+      className={buttonClassName}
+      onClick={() => onSelect(item.id)}
+    >
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center text-base">
+        {item.icon}
+      </span>
+      <span className="min-w-0 truncate max-md:sr-only">{item.label}</span>
+    </button>
+  );
+}
+
+// Sidebar 渲染应用左侧导航与设置抽屉。
 export default function Sidebar() {
   // settingsOpen 标记右侧设置抽屉是否展开。
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // navRef 存储主导航 DOM 容器，用于测量紧凑 tab 的实际位置。
-  const navRef = useRef<HTMLElement | null>(null);
-  // tabRefs 存储每个导航按钮 DOM，用于让 active 背景滑块跟随内容宽度。
-  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  // indicatorStyle 存储 active 背景滑块的测量结果。
-  const [indicatorStyle, setIndicatorStyle] = useState<ActiveIndicatorStyle | null>(null);
-  // activeTab 为当前激活页签
+  // activeTab 存储当前激活页签，空值回退到概览。
   const activeTab = useAppStore((s) => s.prefs?.last_active_tab || "dashboard");
-  // theme 为当前主题模式
-  const theme = useAppStore((s) => s.prefs?.theme || "system");
-  // updatePrefs 用于切换页签与主题并持久化
+  // theme 存储当前主题模式，默认深色。
+  const theme = useAppStore((s) => s.prefs?.theme || "dark");
+  // updatePrefs 存储切换页面与主题时使用的偏好更新方法。
   const updatePrefs = useAppStore((s) => s.updatePrefs);
-  // activeIndex 存储当前激活页签在导航中的位置，用于驱动 segmented 背景滑块移动。
-  const activeIndex = NAV_ITEMS.findIndex((item) => item.id === activeTab);
-  // hasVisibleActiveTab 标记当前页签是否存在于主导航，Dashboard 等隐藏入口不显示滑块。
-  const hasVisibleActiveTab = activeIndex >= 0;
+  // navItems 存储当前侧边栏主导航项。
+  const navItems = createSidebarNavItems();
 
-  useLayoutEffect(() => {
-    // navElement 存储导航容器 DOM，activeButton 存储当前激活 tab 的按钮 DOM。
-    const navElement = navRef.current;
-    const activeButton = tabRefs.current[activeTab];
-
-    if (!navElement || !activeButton || !hasVisibleActiveTab) {
-      setIndicatorStyle(null);
-      return;
-    }
-
-    // navRect 存储导航容器位置，buttonRect 存储激活按钮位置。
-    const navRect = navElement.getBoundingClientRect();
-    const buttonRect = activeButton.getBoundingClientRect();
-    setIndicatorStyle({
-      width: buttonRect.width,
-      left: buttonRect.left - navRect.left,
-    });
-  }, [activeTab, hasVisibleActiveTab]);
-
-  // 切换到指定页签
+  // goTab 切换到指定页面。
   const goTab = (id: string) => updatePrefs({ last_active_tab: id });
 
-  // 打开设置抽屉。
+  // openSettings 打开设置抽屉。
   const openSettings = () => setSettingsOpen(true);
 
-  // 关闭设置抽屉。
+  // closeSettings 关闭设置抽屉。
   const closeSettings = () => setSettingsOpen(false);
 
-  // stopDrawerClick 阻止抽屉内部点击冒泡到遮罩，避免用户编辑设置时误关闭抽屉。
-  const stopDrawerClick = (event: MouseEvent<HTMLElement>) => {
-    event.stopPropagation();
-  };
-
-  // 循环切换主题模式
+  // cycleTheme 循环切换主题模式。
   const cycleTheme = () => {
-    // idx 为当前主题在循环中的位置
+    // idx 存储当前主题在循环数组中的位置。
     const idx = THEME_CYCLE.indexOf(theme as (typeof THEME_CYCLE)[number]);
-    // next 为下一个主题模式（越界回环到 0）
-    const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
-    updatePrefs({ theme: next });
+    // next 存储下一主题模式，当前主题异常时回退到 dark 的下一项。
+    const next = THEME_CYCLE[((idx < 0 ? 1 : idx) + 1) % THEME_CYCLE.length];
+    void updatePrefs({ theme: next });
   };
 
   return (
     <>
-      <header
-        data-testid="top-header"
-        className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-panel px-4"
+      <aside
+        data-testid="app-sidebar"
+        className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-sidebar px-3 py-4 max-md:w-16 max-md:px-2"
       >
-        {/* 左侧：应用标题 + 主导航 */}
-        <div data-testid="top-header-main" className="flex min-w-0 flex-1 items-center gap-4">
-          <div className="max-w-[180px] shrink-0 truncate whitespace-nowrap text-base font-semibold text-text-main">
-            Visual AI Coding
+        <div className="mb-5 flex h-10 items-center gap-3 px-2">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-panel-soft text-lg text-text-main">
+            <AppstoreOutlined aria-hidden="true" />
+          </span>
+          <div className="min-w-0 max-md:hidden">
+            <div className="truncate text-sm font-semibold text-text-main">Visual AI Coding</div>
+            <div className="truncate text-xs text-text-muted">配置与插件控制台</div>
           </div>
+        </div>
 
-          {/* 页签列表 */}
-          <nav
-            aria-label="主导航"
-            ref={navRef}
-            className="relative inline-flex w-auto max-w-full shrink-0 items-center overflow-hidden rounded-lg bg-sidebar p-1"
-          >
-            <div
-              data-testid="tab-active-indicator"
-              className="absolute bottom-1 left-1 top-1 rounded-md border border-border bg-panel shadow-sm transition-all duration-200 ease-out"
-              style={{
-                width: indicatorStyle ? `${indicatorStyle.width}px` : 0,
-                opacity: hasVisibleActiveTab && indicatorStyle ? 1 : 0,
-                transform: `translateX(${indicatorStyle ? indicatorStyle.left : 0}px)`,
-              }}
+        <nav aria-label="主导航" className="flex flex-1 flex-col gap-1">
+          {navItems.map((item) => (
+            <SidebarNavButton
+              key={item.id}
+              item={item}
+              active={activeTab === item.id}
+              onSelect={goTab}
             />
-            {NAV_ITEMS.map((item) => {
-              // active 标记该页签是否为当前激活项。
-              const active = item.id === activeTab;
-              return (
-                <button
-                  key={item.id}
-                  ref={(element) => {
-                    tabRefs.current[item.id] = element;
-                  }}
-                  onClick={() => goTab(item.id)}
-                  className={`relative z-10 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm transition-colors ${
-                    active
-                      ? "text-text-main"
-                      : "text-text-muted/70 hover:bg-panel hover:text-text-main"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
+          ))}
+        </nav>
 
-        {/* 右侧快捷操作 */}
-        <div className="flex shrink-0 items-center gap-1.5">
-          <button
+        <div className="mt-4 grid grid-cols-[2.25rem_minmax(0,1fr)] gap-2 border-t border-border pt-4 max-md:grid-cols-1">
+          <AntButton
+            className="h-9 w-9"
+            icon={THEME_ICON[theme] || THEME_ICON.dark}
             onClick={cycleTheme}
-            aria-label={NEXT_THEME_LABEL[theme] || NEXT_THEME_LABEL.system}
-            title={NEXT_THEME_LABEL[theme] || NEXT_THEME_LABEL.system}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-base text-text-main transition-colors hover:bg-sidebar"
-          >
-            {THEME_ICON[theme] || THEME_ICON.system}
-          </button>
-          <button
+            title={NEXT_THEME_LABEL[theme] || NEXT_THEME_LABEL.dark}
+            aria-label={NEXT_THEME_LABEL[theme] || NEXT_THEME_LABEL.dark}
+            type="text"
+          />
+          <AntButton
+            block
+            className="justify-start max-md:h-9 max-md:w-9 max-md:px-0"
+            icon={<SettingOutlined aria-hidden="true" />}
             onClick={openSettings}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 text-sm text-text-main transition-colors hover:bg-sidebar"
+            type="text"
           >
-            <SettingOutlined aria-hidden="true" />
-            <span>设置</span>
-          </button>
+            <span className="max-md:sr-only">设置</span>
+          </AntButton>
         </div>
-      </header>
+      </aside>
 
-      {/* 设置抽屉：从右侧覆盖当前页面，保留页面上下文。 */}
-      {settingsOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={closeSettings}>
-          <aside
-            role="dialog"
-            aria-modal="true"
-            aria-label="设置"
-            className="h-full w-full max-w-3xl overflow-y-auto border-l border-border bg-panel shadow-xl"
-            onClick={stopDrawerClick}
-          >
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-panel px-5 py-4">
-              <h2 className="text-base font-semibold text-text-main">设置</h2>
-              <button
-                onClick={closeSettings}
-                aria-label="关闭设置"
-                title="关闭设置"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text-main"
-              >
-                <CloseOutlined aria-hidden="true" />
-              </button>
-            </div>
-            <div className="p-5">
-              <SettingsContent />
-            </div>
-          </aside>
-        </div>
-      )}
+      <Drawer
+        destroyOnHidden
+        open={settingsOpen}
+        title="设置"
+        width={760}
+        onClose={closeSettings}
+      >
+        <SettingsContent />
+      </Drawer>
     </>
   );
 }

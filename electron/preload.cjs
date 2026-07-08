@@ -20,6 +20,7 @@ const IPC = {
   UPDATE_CLAUDE_MARKETPLACE: "update-claude-marketplace",
   UPDATE_CODEX_PLUGIN: "update-codex-plugin",
   UPDATE_CODEX_MARKETPLACE: "update-codex-marketplace",
+  SET_PLUGIN_ENABLED: "set-plugin-enabled",
   LIST_SKILLS: "list-skills",
   CHECK_TOOL_LATEST_VERSION: "check-tool-latest-version",
   UPDATE_TOOL_CLI: "update-tool-cli",
@@ -64,6 +65,8 @@ const api = {
   updateCodexPlugin: (payload) => ipcRenderer.invoke(IPC.UPDATE_CODEX_PLUGIN, payload),
   // updateCodexMarketplace 更新 Codex marketplace。
   updateCodexMarketplace: (marketplaceName) => ipcRenderer.invoke(IPC.UPDATE_CODEX_MARKETPLACE, marketplaceName),
+  // setPluginEnabled 启用或禁用单个插件。
+  setPluginEnabled: (payload) => ipcRenderer.invoke(IPC.SET_PLUGIN_ENABLED, payload),
   // listSkills 扫描 Skill 列表。
   listSkills: (payload) => ipcRenderer.invoke(IPC.LIST_SKILLS, payload),
   // checkToolLatestVersion 查询工具最新版。

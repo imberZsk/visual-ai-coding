@@ -17,6 +17,16 @@ import type {
 // ElectronApi 存储 preload API 的非空类型，getElectronApi 已在运行时做缺失检查。
 type ElectronApi = NonNullable<Window["api"]>;
 
+// PluginTogglePayload 描述单插件启停请求参数。
+export interface PluginTogglePayload {
+  tool: "claude" | "codex"; // 插件所属工具。
+  pluginId: string; // 插件完整 ID。
+  scope: string; // Claude 插件安装作用域，Codex 为空字符串。
+  enabled: boolean; // 目标启用状态。
+  claudeHome: string; // Claude 配置根目录。
+  codexHome: string; // Codex 配置根目录。
+}
+
 // getElectronApi 获取 preload 暴露的受限 API；缺失时给出明确错误，便于定位启动链路问题。
 function getElectronApi(): ElectronApi {
   // api 存储 preload 注入到 window 上的安全桥。
@@ -137,6 +147,12 @@ export function updateCodexPlugin(
   marketplace: string
 ): Promise<string> {
   return getElectronApi().updateCodexPlugin({ pluginId, marketplace });
+}
+
+// 启用或禁用单个插件
+// payload 存储工具、插件标识、目标状态和对应配置根目录。
+export function setPluginEnabled(payload: PluginTogglePayload): Promise<string> {
+  return getElectronApi().setPluginEnabled(payload);
 }
 
 // 探测本机 AI 工具安装状态

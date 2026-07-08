@@ -2,8 +2,9 @@
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { execSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { registerIpcHandlers } from "./ipcHandlers.js";
+import { warmLoginPath } from "../src/core/util.js";
 
 // __dirname 存储当前文件目录；ESM 中需从 import.meta.url 推导。
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -14,17 +15,29 @@ const isSmoke = process.env.VAC_SMOKE === "1";
 // mainWindow 持有主窗口引用，避免被垃圾回收。
 let mainWindow = null;
 
-// macOS GUI 应用不继承 SSH_AUTH_SOCK；从 launchd 补齐后，CLI/git 子进程能访问 SSH agent。
-if (process.platform === "darwin" && !process.env.SSH_AUTH_SOCK) {
-  try {
-    // socketPath 存储 launchd 注册的 SSH agent socket 路径。
-    const socketPath = execSync("launchctl getenv SSH_AUTH_SOCK", { encoding: "utf8" }).trim();
-    if (socketPath) {
-      process.env.SSH_AUTH_SOCK = socketPath;
-    }
-  } catch {
-    // SSH agent 不可用时静默降级，不影响非 SSH 命令。
+/**
+ * 异步补齐 SSH_AUTH_SOCK：macOS GUI 应用不继承登录 shell 的 SSH_AUTH_SOCK，
+ * 通过 launchctl 从 launchd 取得 socket 路径后注入 process.env，
+ * 使后续 git/CLI 子进程能访问 SSH agent。
+ * 使用异步 execFile 而非 execSync，避免在主进程 JS 线程同步阻塞。
+ * @returns {Promise<void>}
+ */
+function warmSshAuthSock() {
+  // 非 macOS 或已有 SSH_AUTH_SOCK 时跳过
+  if (process.platform !== "darwin" || process.env.SSH_AUTH_SOCK) {
+    return Promise.resolve();
   }
+  return new Promise((resolve) => {
+    execFile("launchctl", ["getenv", "SSH_AUTH_SOCK"], { encoding: "utf8" }, (err, stdout) => {
+      if (!err) {
+        // sock 存储 launchd 返回的 SSH agent socket 路径
+        const sock = stdout.trim();
+        if (sock) process.env.SSH_AUTH_SOCK = sock;
+      }
+      // SSH agent 不可用时静默降级，不影响非 SSH 命令
+      resolve();
+    });
+  });
 }
 
 // createWindow 创建主窗口并加载渲染进程页面。
@@ -104,7 +117,11 @@ async function runSmokeCheck(win) {
 
 registerIpcHandlers(ipcMain);
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // 并行预热 SSH socket 与登录 shell PATH，不 await——两者均在后台静默完成，
+  // 窗口立即创建不等待；首次 runCommand 时缓存已大概率就绪，否则再等一次异步解析。
+  warmSshAuthSock();
+  warmLoginPath();
   setupCSP();
   // win 存储刚创建的主窗口。
   const win = createWindow();

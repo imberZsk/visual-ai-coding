@@ -1,5 +1,6 @@
 // Skill 扫描：从 Claude / Codex / Agents 目录提取 SKILL.md 元数据。
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join, relative, sep } from "node:path";
 import { homedir } from "node:os";
 import { expandHome } from "./util.js";
@@ -58,32 +59,36 @@ function shouldDescendInto(fileName) {
   return !["node_modules", "target", ".git"].includes(fileName);
 }
 
-// collectSkillFiles 递归收集目录下所有 SKILL.md 文件。
+// collectSkillFiles 异步递归收集目录下所有 SKILL.md 文件。
 // dir 参数存储当前目录，depth 参数存储当前深度，out/diagnostics 接收结果。
-function collectSkillFiles(dir, depth, out, diagnostics) {
+// WHY 改为 async：readdirSync 对大型插件缓存目录会在主进程长时间阻塞，改用 fs.promises 不卡事件循环。
+async function collectSkillFiles(dir, depth, out, diagnostics) {
   if (depth > MAX_SCAN_DEPTH) {
     return;
   }
 
   let entries = [];
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    entries = await readdir(dir, { withFileTypes: true });
   } catch (error) {
     diagnostics.push(`读取目录失败：${dir} (${error.message})`);
     return;
   }
 
-  for (const entry of entries) {
-    // path 存储当前条目的完整路径。
-    const path = join(dir, entry.name);
-    if (entry.isFile() && entry.name === "SKILL.md") {
-      out.push(path);
-      continue;
-    }
-    if (entry.isDirectory() && shouldDescendInto(entry.name)) {
-      collectSkillFiles(path, depth + 1, out, diagnostics);
-    }
-  }
+  // 并行处理所有条目以减少串行等待
+  await Promise.all(
+    entries.map(async (entry) => {
+      // path 存储当前条目的完整路径。
+      const path = join(dir, entry.name);
+      if (entry.isFile() && entry.name === "SKILL.md") {
+        out.push(path);
+        return;
+      }
+      if (entry.isDirectory() && shouldDescendInto(entry.name)) {
+        await collectSkillFiles(path, depth + 1, out, diagnostics);
+      }
+    }),
+  );
 }
 
 // refineSource 根据路径细化来源展示名。
@@ -137,49 +142,59 @@ function buildSkillRoots(claudeHome, codexHome) {
   return roots;
 }
 
-// scanSkillRoot 扫描单个根目录并将 Skill 写入结果列表。
+// scanSkillRoot 异步扫描单个根目录并将 Skill 写入结果列表。
 // root 参数存储待扫描根目录，seenPaths 用于去重，skills/diagnostics 接收结果。
-function scanSkillRoot(root, seenPaths, skills, diagnostics) {
-  if (!existsSync(root.path) || !statSync(root.path).isDirectory()) {
+async function scanSkillRoot(root, seenPaths, skills, diagnostics) {
+  if (!existsSync(root.path)) {
+    return;
+  }
+  try {
+    // rootStat 存储根目录文件系统元数据，用于判断是否为目录。
+    const rootStat = await stat(root.path);
+    if (!rootStat.isDirectory()) return;
+  } catch {
     return;
   }
 
   // skillFiles 存储当前根目录下找到的 SKILL.md 文件路径。
   const skillFiles = [];
-  collectSkillFiles(root.path, 0, skillFiles, diagnostics);
+  await collectSkillFiles(root.path, 0, skillFiles, diagnostics);
 
-  for (const skillFile of skillFiles) {
-    // canonicalPath 存储规范化失败时仍可展示的路径文本。
-    const canonicalPath = skillFile;
-    if (seenPaths.has(canonicalPath)) {
-      continue;
-    }
-    seenPaths.add(canonicalPath);
+  // 并行读取所有 SKILL.md 内容，减少串行 I/O 等待。
+  await Promise.all(
+    skillFiles.map(async (skillFile) => {
+      // canonicalPath 存储规范化失败时仍可展示的路径文本。
+      const canonicalPath = skillFile;
+      if (seenPaths.has(canonicalPath)) {
+        return;
+      }
+      seenPaths.add(canonicalPath);
 
-    try {
-      // content 存储 SKILL.md 文本内容。
-      const content = readFileSync(skillFile, "utf8");
-      // fallbackName 存储无 front matter name 时使用的目录名。
-      const fallbackName = basename(skillFile.split("/").slice(0, -1).join("/")) || "unknown";
-      // metadata 存储解析出的名称和说明。
-      const metadata = parseSkillMarkdown(content, fallbackName);
-      skills.push({
-        name: metadata.name,
-        description: metadata.description,
-        source: refineSource(root.source, skillFile),
-        tool: root.tool,
-        plugin: inferPluginName(root.path, root.source, skillFile),
-        path: canonicalPath,
-      });
-    } catch (error) {
-      diagnostics.push(`读取 Skill 失败：${skillFile} (${error.message})`);
-    }
-  }
+      try {
+        // content 存储 SKILL.md 文本内容。
+        const content = await readFile(skillFile, "utf8");
+        // fallbackName 存储无 front matter name 时使用的目录名。
+        const fallbackName = basename(skillFile.split("/").slice(0, -1).join("/")) || "unknown";
+        // metadata 存储解析出的名称和说明。
+        const metadata = parseSkillMarkdown(content, fallbackName);
+        skills.push({
+          name: metadata.name,
+          description: metadata.description,
+          source: refineSource(root.source, skillFile),
+          tool: root.tool,
+          plugin: inferPluginName(root.path, root.source, skillFile),
+          path: canonicalPath,
+        });
+      } catch (error) {
+        diagnostics.push(`读取 Skill 失败：${skillFile} (${error.message})`);
+      }
+    }),
+  );
 }
 
-// listSkills 扫描本机可用 Skill 列表。
+// listSkills 异步扫描本机可用 Skill 列表。
 // claudeHome 参数存储 Claude 配置根目录，codexHome 参数存储 Codex 配置根目录。
-export function listSkills(claudeHome, codexHome) {
+export async function listSkills(claudeHome, codexHome) {
   // diagnostics 存储扫描过程中的非致命诊断。
   const diagnostics = [];
   // skills 存储最终返回给前端的 Skill 列表。
@@ -189,8 +204,9 @@ export function listSkills(claudeHome, codexHome) {
   // roots 存储所有待扫描根目录。
   const roots = buildSkillRoots(claudeHome, codexHome);
 
+  // 串行扫描各根目录（保证 seenPaths 去重顺序稳定）
   for (const root of roots) {
-    scanSkillRoot(root, seenPaths, skills, diagnostics);
+    await scanSkillRoot(root, seenPaths, skills, diagnostics);
   }
 
   skills.sort((left, right) => {

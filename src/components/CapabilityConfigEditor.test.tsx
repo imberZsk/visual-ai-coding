@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CapabilityConfigEditor, { filterSchemaByFieldPaths } from "./CapabilityConfigEditor";
 import type { ConfigFileSpec } from "../config";
@@ -85,6 +85,21 @@ const spec: ConfigFileSpec = {
   desc: "测试配置",
 };
 
+// getFieldToggle 按字段标题查找 Ant Design Collapse 头部按钮。
+// title 参数存储字段显示标题。
+function getFieldToggle(title: string): HTMLElement {
+  // titleNode 存储字段标题文本节点。
+  const titleNode = screen.getByText(title);
+  // toggle 存储字段标题所在的 Collapse header。
+  const toggle = titleNode.closest(".ant-collapse-header");
+
+  if (!(toggle instanceof HTMLElement)) {
+    throw new Error(`未找到 ${title} 配置项`);
+  }
+
+  return toggle;
+}
+
 describe("CapabilityConfigEditor", () => {
   beforeEach(() => {
     readConfigFileMock.mockResolvedValue({
@@ -132,17 +147,13 @@ describe("CapabilityConfigEditor", () => {
     expect(screen.queryByText("模型")).not.toBeInTheDocument();
     expect(screen.queryByText("MCP Servers")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Hooks 配置项" }));
-    fireEvent.click(screen.getByRole("button", { name: "打开Hooks编辑" }));
+    fireEvent.click(getFieldToggle("Hooks"));
 
-    // dialog 存储 Hooks 大窗口编辑弹窗。
-    const dialog = screen.getByRole("dialog", { name: "编辑Hooks" });
-    // textarea 存储 Hooks 对象的 JSON 草稿。
-    const textarea = within(dialog).getByRole("textbox");
+    // textarea 存储 Hooks 对象的内联 JSON 草稿。
+    const textarea = screen.getByLabelText("Hooks 内容");
     fireEvent.change(textarea, {
       target: { value: '{ "Stop": [{ "hooks": [{ "type": "command", "command": "echo ok" }] }] }' },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "应用到配置" }));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(saveConfigFileMock).toHaveBeenCalled());

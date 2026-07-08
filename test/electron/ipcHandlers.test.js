@@ -25,6 +25,7 @@ describe("electron ipc handlers", () => {
     expect(ipcMain.handle).toHaveBeenCalledWith(IPC.GET_PREFERENCES, expect.any(Function));
     expect(ipcMain.handle).toHaveBeenCalledWith(IPC.READ_CONFIG_FILE, expect.any(Function));
     expect(ipcMain.handle).toHaveBeenCalledWith(IPC.CHECK_CLAUDE_PLUGIN_UPDATES, expect.any(Function));
+    expect(ipcMain.handle).toHaveBeenCalledWith(IPC.SET_PLUGIN_ENABLED, expect.any(Function));
     expect(ipcMain.handle).toHaveBeenCalledWith(IPC.LIST_SKILLS, expect.any(Function));
     expect(ipcMain.handle).toHaveBeenCalledWith(IPC.DETECT_TOOLS, expect.any(Function));
   });

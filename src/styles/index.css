@@ -4,24 +4,40 @@
 
 /* 主题语义色变量：light 为默认，.dark 覆盖为暗色 */
 :root {
-  --surface: 255 255 255; /* 应用主背景，参考 visual-worktree 亮色背景 */
-  --sidebar: 245 245 245; /* 侧边栏背景，略暗于主背景以降低亮度 */
-  --panel: 255 255 255; /* 卡片/面板背景 */
-  --border: 217 217 217; /* 边框线，贴近 Ant Design 默认线色 */
-  --accent: 22 119 255; /* 强调色（参考 visual-worktree / Ant Design 主蓝） */
-  --text-main: 0 0 0; /* 主文本，结合透明度工具类接近 Ant Design 亮色文字 */
-  --text-muted: 0 0 0; /* 次要文本，结合透明度工具类接近 Ant Design 亮色弱文本 */
+  --surface: 246 246 244; /* 应用主背景，存储浅色模式下的纸白石墨底色 */
+  --sidebar: 250 250 249; /* 侧边栏背景，存储浅色模式下略亮的导航层 */
+  --panel: 252 252 250; /* 卡片/面板背景，存储浅色模式下的非纯白主要容器色 */
+  --panel-soft: 238 238 235; /* 柔和面板背景，存储浅色模式下的内嵌分区色 */
+  --border: 217 217 214; /* 常规边框，存储浅色模式下的细线分隔色 */
+  --border-strong: 128 128 124; /* 强边框，存储浅色模式下 hover/focus 需要的石墨线 */
+  --accent: 82 82 78; /* 强调色，存储浅色模式下的石墨主操作色 */
+  --text-main: 24 24 23; /* 主文本，存储浅色模式下的近黑文本 */
+  --text-muted: 91 91 87; /* 次要文本，存储浅色模式下的说明文字 */
+  --success: 22 163 74; /* 成功色，存储浅色模式下接近常规通过标识的绿色 */
+  --warning: 202 138 4; /* 警告色，存储浅色模式下接近常规提醒标识的黄色 */
+  --danger: 220 38 38; /* 危险色，存储浅色模式下接近常规错误标识的红色 */
+  --control-on: 22 119 255; /* 打开态控件色，存储开关选中时用户熟悉的 Ant Design 蓝 */
+  --control-on-hover: 64 150 255; /* 打开态控件 hover 色，存储开关悬浮时更亮的蓝色反馈 */
+  --switch-handle: 252 252 250; /* 开关滑块色，存储浅色模式下略柔和的把手背景 */
 }
 
 /* 暗色主题：通过 html.dark 类切换 */
 .dark {
-  --surface: 20 20 20;
-  --sidebar: 24 24 24;
-  --panel: 31 31 31;
-  --border: 66 66 66;
-  --accent: 22 119 255;
-  --text-main: 255 255 255;
-  --text-muted: 255 255 255;
+  --surface: 18 18 17; /* 应用主背景，存储暗色模式下的石墨黑底色 */
+  --sidebar: 12 12 12; /* 侧边栏背景，存储暗色模式下更深的导航层 */
+  --panel: 28 28 27; /* 卡片/面板背景，存储暗色模式下的主要容器色 */
+  --panel-soft: 38 38 36; /* 柔和面板背景，存储暗色模式下的内嵌分区色 */
+  --border: 58 58 55; /* 常规边框，存储暗色模式下的低噪分隔线 */
+  --border-strong: 112 112 106; /* 强边框，存储暗色模式下 hover/focus 需要的石墨线 */
+  --accent: 212 212 208; /* 强调色，存储暗色模式下的浅石墨主操作色 */
+  --text-main: 239 239 235; /* 主文本，存储暗色模式下的暖白文字 */
+  --text-muted: 168 168 160; /* 次要文本，存储暗色模式下的说明文字 */
+  --success: 34 197 94; /* 成功色，存储暗色模式下接近常规通过标识的绿色 */
+  --warning: 234 179 8; /* 警告色，存储暗色模式下接近常规提醒标识的黄色 */
+  --danger: 239 68 68; /* 危险色，存储暗色模式下接近常规错误标识的红色 */
+  --control-on: 22 119 255; /* 打开态控件色，存储暗色模式下仍可明确识别的 Ant Design 蓝 */
+  --control-on-hover: 64 150 255; /* 打开态控件 hover 色，存储暗色模式下的高对比蓝色反馈 */
+  --switch-handle: 239 239 235; /* 开关滑块色，存储暗色模式下不刺眼的暖白把手背景 */
 }
 
 /* 全局基础样式：填满视口、统一字体与文本色 */
@@ -43,6 +59,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 /* 滚动条美化，贴合主题 */
@@ -51,17 +68,406 @@ body {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: rgb(var(--border));
-  border-radius: 6px;
+  background-color: rgb(var(--border-strong) / 0.56);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Ant Design 全局收敛：让基础控件使用项目自己的石墨控制台层次 */
+.ant-card {
+  color: rgb(var(--text-main));
+  background: rgb(var(--panel));
+  border-color: rgb(var(--border));
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+/* Ant Design 卡片内容：统一压缩默认内边距，适合配置工具的高频操作界面 */
+.ant-card-small > .ant-card-body {
+  padding: 14px;
+}
+
+/* Ant Design 按钮：统一最小触达高度和焦点态，避免默认主题与项目 token 脱节 */
+.ant-btn {
+  min-height: 34px;
+  border-radius: 7px;
+  font-weight: 500;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+/* Ant Design 按钮图标槽：把 loading Spin 和中文按钮文字放在同一视觉中线 */
+.ant-btn .ant-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Ant Design 按钮 loading 图标：固定图标盒，避免 Spin 自身行高拉偏文字基线 */
+.ant-btn .ant-btn-icon [data-testid="loading-icon"],
+.ant-btn [data-testid="loading-icon"] .ant-spin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Ant Design 主按钮：让主操作使用石墨强调色而不是默认蓝色 */
+.ant-btn-primary {
+  color: rgb(var(--sidebar));
+  background: rgb(var(--accent));
+  border-color: rgb(var(--accent));
+  box-shadow: none;
+}
+
+/* Ant Design 主按钮 hover：只轻微提亮，避免工具界面出现过强动效 */
+.ant-btn-primary:not(:disabled):hover {
+  color: rgb(var(--sidebar));
+  background: rgb(var(--accent) / 0.84);
+  border-color: rgb(var(--accent) / 0.84);
+}
+
+/* 暗色主按钮 hover：提高选择器权重，防止 AntD 运行时样式把浅色背景和浅色文字叠在一起 */
+.dark .ant-app .ant-btn-primary:not(:disabled):not(.ant-btn-disabled):hover {
+  color: rgb(var(--sidebar));
+  background: rgb(var(--accent) / 0.82);
+  border-color: rgb(var(--accent) / 0.82);
+}
+
+/* Ant Design 默认与文本按钮：使用项目面板和边框 token */
+.ant-btn-default,
+.ant-btn-text {
+  color: rgb(var(--text-main));
+  background: rgb(var(--panel));
+  border-color: rgb(var(--border));
+}
+
+/* Ant Design 非主按钮 hover：保持轻量背景反馈，不改变控件尺寸 */
+.ant-btn-default:not(:disabled):hover,
+.ant-btn-text:not(:disabled):hover {
+  color: rgb(var(--text-main));
+  background: rgb(var(--panel-soft));
+  border-color: rgb(var(--border-strong));
+}
+
+/* 暗色默认按钮 hover：显式保持深色面板反馈，避免运行时 token 回退成白底导致文字发虚 */
+.dark .ant-app .ant-btn-default:not(:disabled):not(.ant-btn-disabled):hover,
+.dark .ant-app .ant-btn-text:not(:disabled):not(.ant-btn-disabled):hover {
+  color: rgb(var(--text-main));
+  background: rgb(var(--panel-soft));
+  border-color: rgb(var(--border-strong));
+}
+
+/* Ant Design 链接按钮：配置区的展开操作保持中性，不使用默认蓝色 */
+.ant-btn-link,
+.ant-btn-link:not(:disabled):hover {
+  color: rgb(var(--text-main));
+}
+
+/* Ant Design 链接按钮 hover：提供轻背景反馈，保持触达清晰 */
+.ant-btn-link:not(:disabled):hover {
+  background: rgb(var(--panel-soft));
+}
+
+/* Ant Design 焦点态：深浅主题统一使用中性强调外圈 */
+.ant-btn:focus-visible,
+.ant-input:focus,
+.ant-input-focused,
+.ant-select-focused .ant-select-selector,
+.ant-segmented:focus-visible {
+  outline: 2px solid rgb(var(--accent) / 0.42);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* Ant Design 标签：降低默认色块噪音，让状态信息更像工具徽章 */
+.ant-tag {
+  color: rgb(var(--text-muted));
+  background: rgb(var(--panel-soft));
+  border-color: rgb(var(--border));
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+/* Ant Design 状态标签：保留语义文字，颜色只做低饱和提示，不抢夺黑白主题主轴 */
+.ant-tag-success {
+  color: rgb(var(--success));
+  background: rgb(var(--success) / 0.1);
+  border-color: rgb(var(--success) / 0.24);
+}
+
+/* Ant Design 信息标签：把 processing 收束为中性石墨标签，避免出现蓝色噪点 */
+.ant-tag-processing {
+  color: rgb(var(--text-main));
+  background: rgb(var(--panel-soft));
+  border-color: rgb(var(--border-strong) / 0.46);
+}
+
+/* Ant Design 警告标签：使用低饱和暖色，仍通过文字说明表达状态 */
+.ant-tag-warning {
+  color: rgb(var(--warning));
+  background: rgb(var(--warning) / 0.1);
+  border-color: rgb(var(--warning) / 0.24);
+}
+
+/* Ant Design 输入类控件：统一背景、边框与文字色 */
+.ant-input,
+.ant-input-number,
+.ant-select-selector,
+.ant-picker {
+  color: rgb(var(--text-main));
+  background: rgb(var(--panel));
+  border-color: rgb(var(--border));
+  border-radius: 7px;
+}
+
+/* Ant Design 输入占位：确保暗色下占位文案可读但不抢占主体信息 */
+.ant-input::placeholder {
+  color: rgb(var(--text-muted) / 0.74);
+}
+
+/* Ant Design 分段控件：用于表单内部切换，视觉上收进柔和面板 */
+.ant-segmented {
+  color: rgb(var(--text-muted));
+  background: rgb(var(--panel-soft));
+  border: 1px solid rgb(var(--border));
+  border-radius: 8px;
+}
+
+/* Ant Design 分段控件选中项：使用主面板承载，避免高饱和滑块打断配置表单 */
+.ant-segmented .ant-segmented-item-selected {
+  color: rgb(var(--text-main));
+  background: rgb(var(--panel));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+
+/* Ant Design Switch：关闭态保持低噪面板色，和配置表单背景区分开 */
+.ant-app .ant-switch {
+  background: rgb(var(--border-strong) / 0.5);
+}
+
+/* Ant Design Switch hover：关闭态只加深轨道，避免看起来像已打开 */
+.ant-app .ant-switch:hover:not(.ant-switch-disabled) {
+  background: rgb(var(--border-strong) / 0.66);
+}
+
+/* Ant Design Switch：选中状态使用默认蓝色语义，让用户一眼知道当前处于打开状态 */
+.ant-app .ant-switch.ant-switch-checked {
+  background: rgb(var(--control-on));
+}
+
+/* Ant Design Switch 选中 hover：沿用 Ant Design 蓝色亮态，而不是切回纯白或石墨色 */
+.ant-app .ant-switch.ant-switch-checked:hover:not(.ant-switch-disabled) {
+  background: rgb(var(--control-on-hover));
+}
+
+/* Ant Design Switch 把手：轻微离开纯白，暗色下减少刺眼反差 */
+.ant-app .ant-switch .ant-switch-handle::before {
+  background-color: rgb(var(--switch-handle));
+}
+
+/* Ant Design Switch 选中文案：蓝色轨道上使用白色，保持打开态文案清晰 */
+.ant-app .ant-switch.ant-switch-checked .ant-switch-inner {
+  color: #fff;
+}
+
+/* Ant Design 抽屉：设置面板与主界面共享同一层级系统 */
+.ant-drawer .ant-drawer-content,
+.ant-drawer .ant-drawer-header,
+.ant-drawer .ant-drawer-body {
+  color: rgb(var(--text-main));
+  background: rgb(var(--panel));
+  border-color: rgb(var(--border));
+}
+
+/* Ant Design 表格：技能清单使用轻分隔和透明表头，减少表格重量 */
+.ant-table,
+.ant-table-wrapper .ant-table {
+  color: rgb(var(--text-main));
+  background: rgb(var(--panel));
+}
+
+/* Ant Design 表格头部：使用柔和面板色承载列名 */
+.ant-table-wrapper .ant-table-thead > tr > th {
+  color: rgb(var(--text-muted));
+  background: rgb(var(--panel-soft));
+  border-color: rgb(var(--border));
+}
+
+/* Ant Design 表格行：分隔线使用项目边框 token */
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  border-color: rgb(var(--border));
+}
+
+/* Ant Design 表格 hover：只改变背景，不改变字号和边距 */
+.ant-table-wrapper .ant-table-tbody > tr.ant-table-row:hover > td {
+  background: rgb(var(--panel-soft));
+}
+
+/* Ant Design 折叠面板：配置项编辑器继承项目面板层次 */
+.ant-collapse {
+  color: rgb(var(--text-main));
+  background: rgb(var(--panel));
+  border-color: rgb(var(--border));
+}
+
+/* Ant Design 空状态：让说明文字跟随项目次级文本色 */
+.ant-empty .ant-empty-description {
+  color: rgb(var(--text-muted));
 }
 
 /* 顶部 tab 切换时，下方内容只做淡入，避免位置动画造成页面抖动 */
 .tab-content-enter {
   animation: tabContentEnter 0.18s ease-out;
   overflow-x: clip;
+}
+
+/* 可视化配置模块：只负责垂直节奏，避免一个大边框把后续内容全部粘在一起 */
+.visual-config-module {
+  isolation: isolate;
+}
+
+/* 可视化配置文件头：单独承载文件名、路径和文件级操作，不再包住字段列表 */
+.visual-config-header-panel.ant-card {
+  background: rgb(var(--panel));
+  border-color: rgb(var(--border));
+}
+
+/* 可视化配置模块头部：保持文件信息的水平布局，分隔由独立 panel 间距承担 */
+.visual-config-module-header {
+  border-bottom: 0;
+}
+
+/* 可视化配置模块元信息：长路径使用等宽字体并允许在窄屏换行 */
+.visual-config-module-meta {
+  color: rgb(var(--text-muted));
+}
+
+/* 可视化配置独立模块：工具条、分组和状态区共享轻量面板，彼此之间留出呼吸感 */
+.visual-config-panel {
+  border: 1px solid rgb(var(--border));
+  border-radius: 8px;
+  background: rgb(var(--panel));
+}
+
+/* 可视化配置工具条：承载字段排序，视觉上从字段列表里抽离出来 */
+.visual-config-toolbar {
+  background: rgb(var(--panel));
+}
+
+/* 可视化配置分组：每个设置分组成为独立模块，避免和上下分组连成一张长表 */
+.visual-config-group {
+  background: rgb(var(--panel));
+}
+
+/* 可视化配置项：让 Ant Design Collapse 更像紧凑的设置列表项 */
+.visual-config-field.ant-collapse {
+  background: rgb(var(--panel-soft) / 0.28);
+  border-color: rgb(var(--border) / 0.86);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+/* 可视化配置项头部：对齐字段说明与右侧操作按钮，避免多行说明挤压按钮 */
+.visual-config-field .ant-collapse-header {
+  align-items: flex-start !important;
+  gap: 10px;
+  padding: 12px 12px !important;
+}
+
+/* 可视化配置项标题文本：保持字段名称的主层级，不与路径和状态混在一起 */
+.visual-config-field-title {
+  color: rgb(var(--text-main));
+}
+
+/* 可视化配置项 key：使用低噪等宽胶囊承载真实配置路径 */
+.visual-config-field-key {
+  color: rgb(var(--text-muted));
+  background: rgb(var(--panel-soft));
+  border: 1px solid rgb(var(--border));
+}
+
+/* 可视化配置项状态：用小圆点 + 文案表达状态，避免整行染色造成层级过重 */
+.visual-config-field-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid rgb(var(--border));
+  background: rgb(var(--panel-soft));
+  color: rgb(var(--text-main));
+}
+
+/* 可视化配置项状态圆点：状态颜色集中在标识本身，不污染字段卡片背景 */
+.visual-config-field-state::before {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 999px;
+  background: rgb(var(--text-muted) / 0.62);
+  content: "";
+}
+
+/* 可视化配置项已设置状态：仅把标识胶囊和圆点转为成功色，保持整行中性 */
+.visual-config-field-state--set {
+  border-color: rgb(var(--success) / 0.42);
+  background: rgb(var(--success) / 0.12);
+  color: rgb(var(--success));
+}
+
+/* 可视化配置项已设置圆点：增加轻微外圈，让绿色标识在暗色主题中也能被看见 */
+.visual-config-field-state--set::before {
+  background: rgb(var(--success));
+  box-shadow: 0 0 0 3px rgb(var(--success) / 0.14);
+}
+
+/* 可视化配置项辅助信息：统一描述、作用域和默认值的细节层级 */
+.visual-config-field-meta {
+  color: rgb(var(--text-muted));
+}
+
+/* 可视化配置项右侧操作：在多行标题旁保持紧凑而不挤压文本 */
+.visual-config-field-actions {
+  max-width: 18rem;
+}
+
+/* 可视化配置项详情：保留弹出层溢出空间，避免 Select 下拉被折叠容器裁切 */
+.visual-config-field .ant-collapse-content-box {
+  overflow: visible;
+  padding-top: 0 !important;
+}
+
+/* 原始配置文本框：维持原先编辑区高度和等宽排版 */
+.visual-config-raw-textarea.ant-input {
+  min-height: 18rem;
+  resize: vertical;
+  background: rgb(var(--sidebar));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+/* 可视化配置内联文本编辑器：让复杂 JSON / 列表字段在展开项里直接编辑 */
+.visual-config-inline-editor {
+  max-width: 100%;
+}
+
+/* 可视化配置内联文本框：给 JSON/TOML 对象编辑保留足够垂直空间 */
+.visual-config-inline-textarea.ant-input {
+  min-height: 16rem;
+  resize: vertical;
+  background: rgb(var(--sidebar));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 @keyframes tabContentEnter {

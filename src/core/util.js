@@ -1,11 +1,13 @@
 // Electron 后端公共工具：路径展开、原子写入、登录 shell PATH 解析与子进程执行。
-import { execFile, execFileSync, spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
-// cachedLoginPath 缓存登录 shell 解析出的 PATH，避免频繁启动 shell。
+// cachedLoginPath 缓存登录 shell 解析出的 PATH，undefined 表示尚未初始化，null 表示初始化中（进行中的 Promise）。
 let cachedLoginPath = undefined;
+// loginPathPromise 存储正在进行的 PATH 解析 Promise，防止并发重复启动 shell。
+let loginPathPromise = null;
 
 // expandHome 将 ~ / ~/xxx 前缀展开为用户主目录绝对路径。
 // input 参数存储用户配置或文件路径文本；~otheruser 形式保持原样。
@@ -45,34 +47,49 @@ export function atomicWrite(filePath, content) {
   }
 }
 
-// resolveLoginPath 读取登录 shell 中的 PATH，用于修正 macOS GUI 应用的精简环境。
-// env 参数存储进程环境，测试可注入；返回空字符串表示降级使用当前 PATH。
+// resolveLoginPath 异步读取登录 shell 中的 PATH，修正 macOS GUI 应用的精简环境。
+// env 参数存储进程环境，测试时可注入；返回空字符串表示降级使用当前 PATH。
+// WHY 用 Promise 而非 execFileSync：登录 shell（尤其加载 nvm/homebrew 的 zshrc）
+// 耗时可达 300ms-2s，同步执行期间主进程事件循环完全冻结，所有窗口无响应。
 export function resolveLoginPath(env = process.env) {
+  // 已有缓存直接返回
   if (cachedLoginPath !== undefined) {
-    return cachedLoginPath;
+    return Promise.resolve(cachedLoginPath);
+  }
+  // 已有正在进行的解析 Promise，复用同一个，避免并发重复启动 shell
+  if (loginPathPromise) {
+    return loginPathPromise;
   }
 
   // shellPath 存储用户默认 shell，缺失时按 macOS 默认 zsh 处理。
   const shellPath = env.SHELL || "/bin/zsh";
-  try {
-    // output 存储登录交互式 shell 输出的 PATH 文本。
-    const output = execFileSync(shellPath, ["-lic", "echo $PATH"], {
+  loginPathPromise = new Promise((resolve) => {
+    execFile(shellPath, ["-lic", "echo $PATH"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    cachedLoginPath = output || "";
-  } catch {
-    cachedLoginPath = "";
-  }
+      timeout: 5000,
+    }, (err, stdout) => {
+      // output 存储登录交互式 shell 输出的 PATH 文本
+      cachedLoginPath = err ? "" : (stdout.trim() || "");
+      loginPathPromise = null;
+      resolve(cachedLoginPath);
+    });
+  });
 
-  return cachedLoginPath;
+  return loginPathPromise;
 }
 
-// buildCommandEnv 构造修正 PATH 后的子进程环境。
+// warmLoginPath 在应用启动时提前预热 PATH 缓存，避免首次命令执行时等待 shell 初始化。
+// 供 main.js 在 app.whenReady() 后立即调用，不阻塞窗口创建。
+export function warmLoginPath() {
+  return resolveLoginPath();
+}
+
+// buildCommandEnv 异步构造修正 PATH 后的子进程环境。
 // extraEnv 参数存储调用方希望额外注入的环境变量。
-export function buildCommandEnv(extraEnv = {}) {
+export async function buildCommandEnv(extraEnv = {}) {
   // loginPath 存储登录 shell 解析出的真实 PATH。
-  const loginPath = resolveLoginPath();
+  const loginPath = await resolveLoginPath();
   return {
     ...process.env,
     ...(loginPath ? { PATH: loginPath } : {}),
@@ -82,10 +99,10 @@ export function buildCommandEnv(extraEnv = {}) {
 
 // runCommand 执行外部命令并返回 stdout/stderr，失败时抛出包含输出的错误。
 // bin 参数存储可执行文件名，args 参数存储命令参数，options 参数存储 cwd/env 等选项。
-export function runCommand(bin, args = [], options = {}) {
+export async function runCommand(bin, args = [], options = {}) {
+  // childEnv 存储修正 PATH 并合并调用方变量后的环境。
+  const childEnv = await buildCommandEnv(options.env || {});
   return new Promise((resolve, reject) => {
-    // childEnv 存储修正 PATH 并合并调用方变量后的环境。
-    const childEnv = buildCommandEnv(options.env || {});
     execFile(
       bin,
       args,
@@ -119,10 +136,12 @@ export function runCommand(bin, args = [], options = {}) {
 
 // spawnDetached 启动无需等待完成的外部命令。
 // bin 参数存储可执行文件名，args 参数存储命令参数。
-export function spawnDetached(bin, args = []) {
+export async function spawnDetached(bin, args = []) {
+  // childEnv 存储修正 PATH 并合并后的环境。
+  const childEnv = await buildCommandEnv();
   // child 存储已启动的子进程句柄。
   const child = spawn(bin, args, {
-    env: buildCommandEnv(),
+    env: childEnv,
     detached: true,
     stdio: "ignore",
   });

@@ -1,7 +1,8 @@
 // 插件管理页：展示 Claude 与 Codex 插件版本状态，支持检查和拉取更新
+import { Alert, Switch } from "antd";
 import { useEffect } from "react";
 import { revealInFinder } from "../api";
-import { PageHeader, Card, Badge, Button, EmptyState } from "../components/ui";
+import { PageHeader, Card, Badge, Button, EmptyState, PageShell } from "../components/ui";
 import { useAppStore } from "../store";
 import type {
   PluginUpdateCheckResult,
@@ -22,7 +23,9 @@ interface PluginToolSectionProps {
   state: ToolSectionState; // state 存储工具区块的加载、结果与错误状态。
   onRefresh: () => void; // onRefresh 用于重新检查当前工具插件状态。
   onUpdate: (plugin: ToolPluginInfo) => void; // onUpdate 用于触发单个插件更新。
+  onToggleEnabled: (plugin: ToolPluginInfo, enabled: boolean) => void; // onToggleEnabled 用于启用或禁用单个插件。
   isPluginUpdating: (plugin: ToolPluginInfo) => boolean; // isPluginUpdating 判断指定插件按钮是否进入 loading。
+  isPluginToggling: (plugin: ToolPluginInfo) => boolean; // isPluginToggling 判断指定插件开关是否进入 loading。
 }
 
 // INITIAL_PLUGIN_CHECK_DELAY_MS 存储插件页首次检查延迟时间，用于先让 tab 切换动画完成再启动 CLI 检查。
@@ -110,7 +113,9 @@ function PluginToolSection({
   state,
   onRefresh,
   onUpdate,
+  onToggleEnabled,
   isPluginUpdating,
+  isPluginToggling,
 }: PluginToolSectionProps) {
   return (
     <section className="mb-6">
@@ -122,38 +127,53 @@ function PluginToolSection({
       </div>
 
       {state.error && (
-        <div className="mb-3 rounded-lg border border-red-500/40 p-3 text-xs text-red-500">
-          <div className="font-medium">{title}检查失败</div>
-          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
-            {state.error}
-          </pre>
-        </div>
+        <Alert
+          className="mb-3"
+          description={<pre className="m-0 max-h-32 overflow-auto whitespace-pre-wrap font-mono">{state.error}</pre>}
+          message={`${title}检查失败`}
+          showIcon
+          type="error"
+        />
       )}
 
       {state.result?.diagnostics && !state.error && state.result.plugins.length === 0 && (
-        <div className="mb-3 rounded-lg border border-amber-500/40 p-3 text-xs text-amber-500">
-          <div className="font-medium">{title}诊断</div>
-          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
-            {state.result.diagnostics}
-          </pre>
-        </div>
+        <Alert
+          className="mb-3"
+          description={
+            <pre className="m-0 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
+              {state.result.diagnostics}
+            </pre>
+          }
+          message={`${title}诊断`}
+          showIcon
+          type="warning"
+        />
       )}
 
-      {state.error ? (
-        <div className="py-6 text-sm text-text-muted">该工具插件检查失败，请查看上方错误信息。</div>
-      ) : !state.result || state.result.plugins.length === 0 ? (
-        <EmptyState text="未发现已安装插件" />
-      ) : (
-        <div className="space-y-3">
-          {state.result.plugins.map((plugin) => {
-            // lastUpdatedText 存储最近更新时间的中国时区中文展示结果。
-            const lastUpdatedText = formatPluginLastUpdated(plugin.last_updated);
+      {/* min-h 常驻基准：让检查中 / 尚未检查 / 空 / 列表各态共用同一最小高度，避免检查完成后从空态跳到插件卡片列表造成的布局跳动（CLS） */}
+      <div className="min-h-[160px]">
+        {state.error ? (
+          <div className="py-6 text-sm text-text-muted">该工具插件检查失败，请查看上方错误信息。</div>
+        ) : !state.result ? (
+          // 尚未检查（result 为 null）：用与检查中一致的占位高度，不展示语义不准的「未发现已安装插件」空态
+          <div className="flex min-h-[160px] items-center justify-center text-sm text-text-muted">
+            {state.loading ? "正在检查插件…" : "点击上方按钮检查插件"}
+          </div>
+        ) : state.result.plugins.length === 0 ? (
+          <EmptyState text="未发现已安装插件" />
+        ) : (
+          <div className="space-y-3">
+            {state.result.plugins.map((plugin) => {
+              // lastUpdatedText 存储最近更新时间的中国时区中文展示结果。
+              const lastUpdatedText = formatPluginLastUpdated(plugin.last_updated);
+              // toggling 存储当前插件是否正在执行启停操作。
+              const toggling = isPluginToggling(plugin);
 
             return (
               <Card
                 key={`${state.result?.tool}-${plugin.id}-${plugin.scope}-${plugin.install_path}`}
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium text-text-main">{plugin.id}</span>
@@ -175,7 +195,17 @@ function PluginToolSection({
                       </div>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+                    <div className="flex items-center gap-2 text-xs text-text-muted">
+                      <span>启用</span>
+                      <Switch
+                        aria-label={`启用 ${plugin.id}`}
+                        checked={plugin.enabled}
+                        disabled={toggling}
+                        loading={toggling}
+                        onChange={(checked) => onToggleEnabled(plugin, checked)}
+                      />
+                    </div>
                     <Button
                       onClick={() => {
                         void revealInFinder(plugin.install_path).catch(console.error);
@@ -198,8 +228,9 @@ function PluginToolSection({
               </Card>
             );
           })}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -218,6 +249,8 @@ export default function PluginsPage() {
   const checkAllPluginUpdates = useAppStore((state) => state.checkAllPluginUpdates);
   // updatePlugin 存储更新指定工具插件的 store action。
   const updatePlugin = useAppStore((state) => state.updatePlugin);
+  // setPluginEnabled 存储启用或禁用指定工具插件的 store action。
+  const setPluginEnabled = useAppStore((state) => state.setPluginEnabled);
 
   useEffect(() => {
     // timer 存储首轮插件检查的延迟句柄，避免切到插件 tab 时同步启动 CLI 检查造成卡顿。
@@ -231,7 +264,7 @@ export default function PluginsPage() {
   }, [checkAllPluginUpdates, claudeHome, codexHome]);
 
   return (
-    <div className="p-6">
+    <PageShell>
       <PageHeader
         title="插件"
         subtitle="管理 Claude Code 与 Codex 插件，检查可用版本并拉取更新"
@@ -249,28 +282,59 @@ export default function PluginsPage() {
       />
 
       {pluginPage.update && (
-        <div
-          className={`mb-4 rounded-lg border p-3 text-xs ${
-            pluginPage.update.phase === "err"
-              ? "border-red-500/40 text-red-500"
-              : pluginPage.update.phase === "ok"
-              ? "border-green-500/40 text-green-500"
-              : "border-border text-text-muted"
-          }`}
-        >
-          <div className="font-medium">
-            {pluginPage.update.phase === "loading"
-              ? `正在更新 ${pluginPage.update.target}…`
-              : `${pluginPage.update.target} 更新${
-                  pluginPage.update.phase === "ok" ? "成功" : "失败"
-                }`}
-          </div>
-          {pluginPage.update.text && (
+        <Alert
+          className="mb-4"
+          description={
+            pluginPage.update.text ? (
             <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
               {pluginPage.update.text}
             </pre>
-          )}
-        </div>
+            ) : undefined
+          }
+          message={
+            pluginPage.update.phase === "loading"
+              ? `正在更新 ${pluginPage.update.target}…`
+              : `${pluginPage.update.target} 更新${
+                  pluginPage.update.phase === "ok" ? "成功" : "失败"
+                }`
+          }
+          showIcon
+          type={
+            pluginPage.update.phase === "err"
+              ? "error"
+              : pluginPage.update.phase === "ok"
+              ? "success"
+              : "info"
+          }
+        />
+      )}
+
+      {pluginPage.toggle && (
+        <Alert
+          className="mb-4"
+          description={
+            pluginPage.toggle.text ? (
+              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
+                {pluginPage.toggle.text}
+              </pre>
+            ) : undefined
+          }
+          message={
+            pluginPage.toggle.phase === "loading"
+              ? `正在切换 ${pluginPage.toggle.target}…`
+              : `${pluginPage.toggle.target} 启停${
+                  pluginPage.toggle.phase === "ok" ? "成功" : "失败"
+                }`
+          }
+          showIcon
+          type={
+            pluginPage.toggle.phase === "err"
+              ? "error"
+              : pluginPage.toggle.phase === "ok"
+              ? "success"
+              : "info"
+          }
+        />
       )}
 
       <PluginToolSection
@@ -282,8 +346,14 @@ export default function PluginsPage() {
         onUpdate={(plugin) => {
           void updatePlugin("claude", plugin);
         }}
+        onToggleEnabled={(plugin, enabled) => {
+          void setPluginEnabled("claude", plugin, enabled);
+        }}
         isPluginUpdating={(plugin) => {
           return Boolean(pluginPage.updating[pluginUpdateKey("claude", plugin)]);
+        }}
+        isPluginToggling={(plugin) => {
+          return Boolean(pluginPage.toggling[pluginUpdateKey("claude", plugin)]);
         }}
       />
       <PluginToolSection
@@ -295,10 +365,16 @@ export default function PluginsPage() {
         onUpdate={(plugin) => {
           void updatePlugin("codex", plugin);
         }}
+        onToggleEnabled={(plugin, enabled) => {
+          void setPluginEnabled("codex", plugin, enabled);
+        }}
         isPluginUpdating={(plugin) => {
           return Boolean(pluginPage.updating[pluginUpdateKey("codex", plugin)]);
         }}
+        isPluginToggling={(plugin) => {
+          return Boolean(pluginPage.toggling[pluginUpdateKey("codex", plugin)]);
+        }}
       />
-    </div>
+    </PageShell>
   );
 }

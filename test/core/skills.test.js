@@ -45,7 +45,7 @@ describe("core skills", () => {
   });
 
   // 验证列表扫描能读取用户 skill 并返回稳定字段。
-  it("lists skills from configured roots", () => {
+  it("lists skills from configured roots", async () => {
     // claudeHome 存储测试专属 Claude home。
     const claudeHome = makeTempRoot();
     // skillDir 存储测试 Skill 目录。
@@ -54,7 +54,7 @@ describe("core skills", () => {
     writeFileSync(skillDir + "/SKILL.md", "---\nname: writer\ndescription: Write docs.\n---\n");
 
     // result 存储扫描结果。
-    const result = listSkills(claudeHome, "");
+    const result = await listSkills(claudeHome, "");
     // writerSkill 存储测试创建的 Skill，避免真实 Agents skill 影响排序位置。
     const writerSkill = result.skills.find((skill) => skill.name === "writer");
 

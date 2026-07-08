@@ -1,7 +1,20 @@
 // Skill 清单页：展示当前 Claude / Codex / Agents 可用的 skill 及其用途说明
-import { useEffect, useMemo, useState } from "react";
+import {
+  Alert,
+  Button as AntButton,
+  Empty,
+  Input,
+  Space,
+  Spin,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  type TableColumnsType,
+} from "antd";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { listSkills, openInVscode } from "../api";
-import { Badge, Button, EmptyState, LoadingIcon, PageHeader } from "../components/ui";
+import { PageHeader, PageShell } from "../components/ui";
 import { useAppStore } from "../store";
 import type { SkillInfo, SkillListResult } from "../types";
 
@@ -19,11 +32,11 @@ function VscodeIcon() {
   );
 }
 
-// toolTone 根据 skill 所属工具返回徽章色调。
+// toolTagColor 根据 skill 所属工具返回 Ant Design Tag 色值。
 // tool 为后端返回的工具域标识。
-function toolTone(tool: SkillInfo["tool"]): "neutral" | "success" | "warning" | "info" {
+function toolTagColor(tool: SkillInfo["tool"]): string {
   if (tool === "codex") {
-    return "info";
+    return "processing";
   }
   if (tool === "claude") {
     return "warning";
@@ -57,7 +70,13 @@ function filterSkills(skills: SkillInfo[], query: string): SkillInfo[] {
   });
 }
 
-// SkillTable 渲染扁平的 skill 清单表格，避免分组卡片造成嵌套视觉负担。
+// getSkillRowKey 生成 Ant Design Table 的稳定行 key。
+// skill 为待展示的 skill 信息。
+function getSkillRowKey(skill: SkillInfo): string {
+  return `${skill.path}-${skill.name}`;
+}
+
+// SkillTable 使用 Ant Design Table 渲染扁平 skill 清单，避免维护手写表格语义与响应式细节。
 // skills 为当前需要展示的 skill 列表，vscodePath 为 VSCode CLI 路径。
 function SkillTable({
   skills,
@@ -66,96 +85,102 @@ function SkillTable({
   skills: SkillInfo[]; // skills 存储当前需要展示的 skill 列表。
   vscodePath: string; // vscodePath 存储用户配置的 VSCode CLI 路径。
 }) {
-  return (
-    <div
-      role="table"
-      aria-label="Skill 清单"
-      className="overflow-hidden rounded-xl border border-border bg-panel"
-    >
-      <div
-        role="row"
-        className="hidden grid-cols-[minmax(140px,0.85fr)_minmax(220px,1.55fr)_minmax(110px,0.65fr)_minmax(160px,0.9fr)_88px] gap-4 bg-surface px-4 py-3 text-xs font-medium uppercase text-text-muted md:grid"
-      >
-        <div role="columnheader">Skill</div>
-        <div role="columnheader">用途</div>
-        <div role="columnheader">来源</div>
-        <div role="columnheader">路径</div>
-        <div role="columnheader">操作</div>
-      </div>
-      <div className="divide-y divide-border">
-        {skills.map((skill) => (
-          <SkillRow
-            key={`${skill.path}-${skill.name}`}
-            skill={skill}
-            vscodePath={vscodePath}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// SkillRow 渲染单条 skill 信息。
-// skill 为待展示的 skill 信息，vscodePath 为 VSCode CLI 路径。
-function SkillRow({
-  skill,
-  vscodePath,
-}: {
-  skill: SkillInfo; // skill 存储待展示的 skill 信息。
-  vscodePath: string; // vscodePath 存储用户配置的 VSCode CLI 路径。
-}) {
-  // canOpenInVscode 标记当前是否具备使用 VSCode 打开的必要配置。
-  const canOpenInVscode = Boolean(vscodePath && skill.path);
-
-  return (
-    <div
-      role="row"
-      className="grid gap-3 px-4 py-4 transition-colors hover:bg-surface/70 md:grid-cols-[minmax(140px,0.85fr)_minmax(220px,1.55fr)_minmax(110px,0.65fr)_minmax(160px,0.9fr)_88px] md:gap-4"
-    >
-      <div role="cell" className="min-w-0">
-        <div className="min-w-0">
-          <div className="truncate font-medium text-text-main" title={skill.name}>
+  // columns 存储 Ant Design Table 列配置，集中声明每列如何消费 skill 字段。
+  const columns: TableColumnsType<SkillInfo> = [
+    {
+      title: "Skill",
+      dataIndex: "name",
+      key: "name",
+      width: 220,
+      render: (_value, skill) => (
+        <Space direction="vertical" size={6} className="min-w-0">
+          <Typography.Text strong ellipsis={{ tooltip: skill.name }}>
             {skill.name}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <Badge tone={toolTone(skill.tool)}>{skill.tool}</Badge>
-            {skill.plugin && <Badge tone="neutral">{skill.plugin}</Badge>}
-          </div>
-        </div>
-      </div>
-      <div role="cell" className="min-w-0">
-        <div className="mb-1 text-xs font-medium text-text-muted md:hidden">用途</div>
-        <p className="line-clamp-3 text-sm leading-6 text-text-muted">
-          {skill.description || "这个 skill 没有提供用途说明。"}
-        </p>
-      </div>
-      <div role="cell" className="min-w-0">
-        <div className="mb-1 text-xs font-medium text-text-muted md:hidden">来源</div>
-        <div className="text-sm text-text-main">{skill.source || "未知来源"}</div>
-      </div>
-      <div role="cell" className="min-w-0">
-        <div className="mb-1 text-xs font-medium text-text-muted md:hidden">路径</div>
-        <div className="min-w-0 font-mono text-xs leading-5 text-text-muted">
-          <div className="line-clamp-2 break-all" title={skill.path}>
-            {skill.path}
-          </div>
-        </div>
-      </div>
-      <div role="cell" className="flex items-start md:justify-end">
-        <Button
-          onClick={() => {
-            void openInVscode(vscodePath, skill.path).catch(console.error);
-          }}
-          variant="ghost"
-          disabled={!canOpenInVscode}
-          className="h-8 w-8 px-0 py-0 text-accent hover:bg-accent/10 hover:text-accent"
-          title={canOpenInVscode ? "用 VSCode 打开 SKILL.md" : "请先在设置中配置 VSCode CLI 路径"}
-          ariaLabel="VSCode"
+          </Typography.Text>
+          <Space size={4} wrap>
+            <Tag color={toolTagColor(skill.tool)} className="m-0">
+              {skill.tool}
+            </Tag>
+            {skill.plugin && <Tag className="m-0">{skill.plugin}</Tag>}
+          </Space>
+        </Space>
+      ),
+    },
+    {
+      title: "用途",
+      dataIndex: "description",
+      key: "description",
+      render: (description: SkillInfo["description"]) => (
+        <Typography.Paragraph
+          className="m-0 text-text-muted"
+          ellipsis={{ rows: 3, tooltip: description || "这个 skill 没有提供用途说明。" }}
         >
-          <VscodeIcon />
-        </Button>
-      </div>
-    </div>
+          {description || "这个 skill 没有提供用途说明。"}
+        </Typography.Paragraph>
+      ),
+    },
+    {
+      title: "来源",
+      dataIndex: "source",
+      key: "source",
+      width: 160,
+      render: (source: SkillInfo["source"]) => (
+        <Typography.Text ellipsis={{ tooltip: source || "未知来源" }}>
+          {source || "未知来源"}
+        </Typography.Text>
+      ),
+    },
+    {
+      title: "路径",
+      dataIndex: "path",
+      key: "path",
+      width: 260,
+      render: (path: SkillInfo["path"]) => (
+        <Typography.Paragraph
+          className="m-0 skill-path-text"
+          ellipsis={{ rows: 2, tooltip: path }}
+          style={{ wordBreak: "break-all" }}
+        >
+          {path}
+        </Typography.Paragraph>
+      ),
+    },
+    {
+      title: "操作",
+      key: "action",
+      align: "right",
+      width: 88,
+      render: (_value, skill) => {
+        // canOpenInVscode 标记当前是否具备使用 VSCode 打开的必要配置。
+        const canOpenInVscode = Boolean(vscodePath && skill.path);
+
+        return (
+          <Tooltip title={canOpenInVscode ? "用 VSCode 打开 SKILL.md" : "请先在设置中配置 VSCode CLI 路径"}>
+            <AntButton
+              aria-label="VSCode"
+              disabled={!canOpenInVscode}
+              icon={<VscodeIcon />}
+              onClick={() => {
+                void openInVscode(vscodePath, skill.path).catch(console.error);
+              }}
+              type="text"
+            />
+          </Tooltip>
+        );
+      },
+    },
+  ];
+
+  return (
+    <Table
+      className="skill-directory-table"
+      columns={columns}
+      dataSource={skills}
+      pagination={false}
+      rowKey={getSkillRowKey}
+      size="small"
+      tableLayout="fixed"
+    />
   );
 }
 
@@ -178,20 +203,29 @@ export default function SkillsPage() {
   const [error, setError] = useState("");
   // query 存储搜索框输入内容。
   const [query, setQuery] = useState("");
+  // loadingRef 存储正在执行的 loadSkills 请求序号，用于丢弃过期请求结果，避免竞态覆盖。
+  const loadingRef = useRef(0);
 
   // loadSkills 从后端扫描可用 skill。
   async function loadSkills() {
+    // seq 存储本次请求序号；若返回时序号已被更新则说明有更新的请求在运行，丢弃结果。
+    const seq = ++loadingRef.current;
     setLoading(true);
     setError("");
     try {
       // nextResult 存储后端返回的 skill 扫描结果。
       const nextResult = await listSkills(claudeHome, codexHome);
+      // 只有最新一次请求的结果才写入 state，避免并发时旧结果覆盖新结果。
+      if (seq !== loadingRef.current) return;
       setResult(nextResult);
     } catch (loadError) {
+      if (seq !== loadingRef.current) return;
       setError(String(loadError));
       setResult({ skills: [], diagnostics: "" });
     } finally {
-      setLoading(false);
+      if (seq === loadingRef.current) {
+        setLoading(false);
+      }
     }
   }
 
@@ -213,26 +247,25 @@ export default function SkillsPage() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
+    <PageShell className="max-w-6xl">
       <PageHeader
         title="技能"
         subtitle="查看当前 Claude、Codex 与本机 Agents 可用的 Skill，以及每个 Skill 适合处理什么任务。"
         actions={
-          <Button onClick={() => void loadSkills()} loading={loading}>
+          <AntButton aria-label="刷新" disabled={loading} onClick={() => void loadSkills()} loading={loading}>
             刷新
-          </Button>
+          </AntButton>
         }
       />
 
       <div className="mb-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-        <input
+        <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="搜索 skill、用途、来源"
-          className="min-w-0 rounded-lg border border-border bg-panel px-3 py-2 text-sm text-text-main outline-none transition-colors placeholder:text-text-muted focus:border-accent"
         />
         <div className="flex items-center gap-2 text-sm text-text-muted">
-          {loading && <LoadingIcon className="text-accent" />}
+          {loading && <Spin size="small" />}
           <span>
             共 {result.skills.length} 个 Skill
             {query ? `，匹配 ${filteredSkills.length} 个` : ""}
@@ -241,33 +274,47 @@ export default function SkillsPage() {
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-500/40 p-3 text-xs text-red-500">
-          <div className="font-medium">Skill 扫描失败</div>
-          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
-            {error}
-          </pre>
-        </div>
+        <Alert
+          className="mb-4"
+          description={<pre className="m-0 max-h-32 overflow-auto whitespace-pre-wrap font-mono">{error}</pre>}
+          message="Skill 扫描失败"
+          showIcon
+          type="error"
+        />
       )}
 
       {result.diagnostics && !error && (
-        <div className="mb-4 rounded-lg border border-amber-500/40 p-3 text-xs text-amber-500">
-          <div className="font-medium">扫描诊断</div>
-          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
-            {result.diagnostics}
-          </pre>
-        </div>
+        <Alert
+          className="mb-4"
+          description={
+            <pre className="m-0 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
+              {result.diagnostics}
+            </pre>
+          }
+          message="扫描诊断"
+          showIcon
+          type="warning"
+        />
       )}
 
-      {loading && result.skills.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-text-muted">
-          <LoadingIcon className="text-accent" />
-          <span>加载 Skill…</span>
-        </div>
-      ) : filteredSkills.length === 0 ? (
-        <EmptyState text={query ? "没有匹配的 Skill" : "未发现可用 Skill"} />
-      ) : (
-        <SkillTable skills={filteredSkills} vscodePath={vscodePath} />
-      )}
-    </div>
+      {/* min-h 常驻基准：让 loading / 空 / 表格三态共用同一最小高度，避免扫描完成后内容区从小占位跳到不定行表格造成的整屏跳动（CLS） */}
+      <div className="min-h-[280px]">
+        {loading && result.skills.length === 0 ? (
+          <div className="flex min-h-[280px] items-center justify-center gap-2 text-sm text-text-muted">
+            <Spin size="small" />
+            <span>加载 Skill…</span>
+          </div>
+        ) : filteredSkills.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border py-8">
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={query ? "没有匹配的 Skill" : "未发现可用 Skill"}
+            />
+          </div>
+        ) : (
+          <SkillTable skills={filteredSkills} vscodePath={vscodePath} />
+        )}
+      </div>
+    </PageShell>
   );
 }

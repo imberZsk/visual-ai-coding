@@ -51,19 +51,22 @@ describe("core settings", () => {
   });
 
   // 验证目录列表按目录优先、同类名称排序。
-  it("lists directory entries with directories first", () => {
+  it("lists directory entries with directories first", async () => {
     // dir 存储测试根目录。
     const dir = makeTempHome("list");
     mkdirSync(join(dir, "z-dir"));
     writeFileSync(join(dir, "a-file.txt"), "hello");
     mkdirSync(join(dir, "a-dir"));
 
-    expect(listDir(dir).map((entry) => entry.name)).toEqual(["a-dir", "z-dir", "a-file.txt"]);
+    // entries 存储异步读取到的目录项列表。
+    const entries = await listDir(dir);
+
+    expect(entries.map((entry) => entry.name)).toEqual(["a-dir", "z-dir", "a-file.txt"]);
     rmSync(dir, { recursive: true, force: true });
   });
 
   // 验证 output style 列表同时包含内置项和自定义 Markdown。
-  it("lists builtin and custom Claude output styles", () => {
+  it("lists builtin and custom Claude output styles", async () => {
     // claudeHome 存储测试专属 Claude home。
     const claudeHome = makeTempHome("output-styles");
     // stylesDir 存储自定义 output style 目录。
@@ -75,7 +78,7 @@ describe("core settings", () => {
     );
 
     // result 存储扫描结果。
-    const result = listClaudeOutputStyles(claudeHome);
+    const result = await listClaudeOutputStyles(claudeHome);
 
     expect(result.exists).toBe(true);
     expect(result.styles.map((style) => style.name)).toContain("default");

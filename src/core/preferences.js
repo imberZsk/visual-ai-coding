@@ -7,7 +7,7 @@ import { atomicWrite } from "./util.js";
 // defaultPreferences 创建应用偏好的默认值。
 export function defaultPreferences() {
   return {
-    theme: "system",
+    theme: "dark",
     vscode_path: "code",
     claude_home: join(homedir(), ".claude"),
     codex_home: join(homedir(), ".codex"),

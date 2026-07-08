@@ -1,7 +1,8 @@
 // 应用设置页：配置主题、VSCode 路径、Claude/Codex 配置目录，持久化到 ~/.visualAiCoding
+import { Alert, Empty, Input, Segmented, Spin } from "antd";
 import { useState, useEffect } from "react";
 import { useAppStore } from "../store";
-import { PageHeader, Card, Button, SectionTitle, LoadingIcon } from "../components/ui";
+import { PageHeader, Card, Button, SectionTitle, PageShell } from "../components/ui";
 import { DashboardContent } from "./Dashboard";
 import { getOfficialSettingsSources, updateOfficialSettingsSources } from "../api";
 import { CLAUDE_SETTINGS_SCHEMA } from "../config/claudeSettingsSchema";
@@ -170,24 +171,16 @@ export function SettingsContent() {
   return (
     <div className="space-y-4">
       {/* 概览内容：设置抽屉里直接查看工具状态，不再切换到单独概览路由。 */}
-      <Card>
-        <DashboardContent compact />
-      </Card>
+      <DashboardContent compact />
 
       {/* 主题设置 */}
       <Card>
         <SectionTitle>主题</SectionTitle>
-        <div className="flex gap-2">
-          {THEME_OPTIONS.map((opt) => (
-            <Button
-              key={opt.value}
-              onClick={() => updatePrefs({ theme: opt.value })}
-              variant={theme === opt.value ? "primary" : "default"}
-            >
-              {opt.label}
-            </Button>
-          ))}
-        </div>
+        <Segmented
+          options={THEME_OPTIONS}
+          value={theme}
+          onChange={(nextTheme) => updatePrefs({ theme: String(nextTheme) })}
+        />
       </Card>
 
       {/* 官方设置来源 */}
@@ -257,22 +250,18 @@ export function SettingsContent() {
             );
           })}
           {!officialLoading && officialSettings && officialSettings.sources.length === 0 && (
-            <div className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-text-muted">
-              暂无官方设置来源
-            </div>
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无官方设置来源" />
           )}
           {!officialSettings && officialLoading && (
             <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border py-6 text-sm text-text-muted">
-              <LoadingIcon className="h-3.5 w-3.5" />
+              <Spin size="small" />
               <span>正在读取官方设置来源…</span>
             </div>
           )}
           {officialSettings?.diagnostics && (
-            <div className="whitespace-pre-wrap rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-500">
-              {officialSettings.diagnostics}
-            </div>
+            <Alert message={officialSettings.diagnostics} showIcon type="warning" />
           )}
-          {officialError && <div className="text-xs text-red-500">{officialError}</div>}
+          {officialError && <Alert message={officialError} showIcon type="error" />}
         </div>
       </Card>
 
@@ -285,12 +274,11 @@ export function SettingsContent() {
             <label htmlFor="settings-vscode-path" className="mb-1 block text-xs text-text-muted">
               VSCode CLI 路径（默认 code）
             </label>
-            <input
+            <Input
               id="settings-vscode-path"
               value={vscodePath}
               onChange={(e) => setVscodePath(e.target.value)}
               spellCheck={false}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-main outline-none focus:border-accent"
               placeholder="code 或 /usr/local/bin/code"
             />
           </div>
@@ -299,12 +287,12 @@ export function SettingsContent() {
             <label htmlFor="settings-claude-home" className="mb-1 block text-xs text-text-muted">
               Claude 配置目录
             </label>
-            <input
+            <Input
               id="settings-claude-home"
               value={claudeHome}
               onChange={(e) => setClaudeHome(e.target.value)}
               spellCheck={false}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm font-mono text-text-main outline-none focus:border-accent"
+              className="font-mono"
               placeholder="~/.claude"
             />
           </div>
@@ -313,12 +301,12 @@ export function SettingsContent() {
             <label htmlFor="settings-codex-home" className="mb-1 block text-xs text-text-muted">
               Codex 配置目录
             </label>
-            <input
+            <Input
               id="settings-codex-home"
               value={codexHome}
               onChange={(e) => setCodexHome(e.target.value)}
               spellCheck={false}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm font-mono text-text-main outline-none focus:border-accent"
+              className="font-mono"
               placeholder="~/.codex"
             />
           </div>
@@ -327,8 +315,8 @@ export function SettingsContent() {
               保存
             </Button>
             {/* 保存成功短暂提示 */}
-            {saved && <span className="text-xs text-green-500">已保存</span>}
-            {pathError && <span className="text-xs text-red-500">{pathError}</span>}
+            {saved && <Alert className="py-1" message="已保存" showIcon type="success" />}
+            {pathError && <Alert className="py-1" message={pathError} showIcon type="error" />}
           </div>
         </div>
       </Card>
@@ -339,13 +327,13 @@ export function SettingsContent() {
 // 应用设置页组件：保留独立设置页兼容历史 last_active_tab=settings。
 export default function SettingsPage() {
   return (
-    <div className="p-6">
+    <PageShell>
       <PageHeader
         title="应用设置"
         subtitle="偏好持久化到 ~/.visualAiCoding/preferences.json"
       />
 
       <SettingsContent />
-    </div>
+    </PageShell>
   );
 }

@@ -77,7 +77,7 @@ describe("App tab loading", () => {
     storeState = {
       loaded: true,
       prefs: {
-        theme: "system",
+        theme: "dark",
         vscode_path: "code",
         claude_home: "/Users/test/.claude",
         codex_home: "/Users/test/.codex",
@@ -101,10 +101,8 @@ describe("App tab loading", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "插件" }));
 
-    // activeIndicator 存储顶部 tab 背景滑块，切到“插件”时应显示但不再使用等分 translateX 算法。
-    const activeIndicator = screen.getByTestId("tab-active-indicator");
-    expect(activeIndicator).toHaveStyle({ opacity: "1" });
-    expect(activeIndicator.style.transform).not.toBe("translateX(500%)");
+    // 切到“插件”后该导航项应处于当前页语义态，高亮由侧边栏按钮 class 维护。
+    expect(screen.getByRole("button", { name: "插件" })).toHaveAttribute("aria-current", "page");
 
     expect(screen.queryByText("页面加载中…")).not.toBeInTheDocument();
     expect(screen.queryByTestId("tab-loading-indicator")).not.toBeInTheDocument();
@@ -112,44 +110,49 @@ describe("App tab loading", () => {
     expect(screen.getByTestId("tab-content")).toHaveClass("tab-content-enter");
   });
 
-  // 验证应用使用类似 visual-worktree 的顶部栏布局，而不是左侧栏布局。
-  it("renders top navigation instead of a left sidebar", () => {
+  // 验证应用使用桌面控制台式左侧栏，而不是顶部页签栏布局。
+  it("renders a desktop sidebar navigation instead of a top tab bar", () => {
     // rendered 存储 App 渲染结果，供布局断言查询 DOM。
     const rendered = render(<App />);
 
-    expect(screen.getByRole("banner")).toBeInTheDocument();
+    expect(screen.getByTestId("app-sidebar")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "主导航" })).toBeInTheDocument();
-    expect(rendered.container.querySelector("aside")).not.toBeInTheDocument();
-    expect(screen.getByTestId("top-header")).toHaveClass("gap-3");
-    expect(screen.getByTestId("top-header-main")).toHaveClass("flex-1");
-    expect(screen.getByRole("navigation", { name: "主导航" })).toHaveClass("inline-flex");
-    expect(screen.getByRole("navigation", { name: "主导航" })).toHaveClass("w-auto");
+    expect(rendered.container.querySelector("aside")).toBeInTheDocument();
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+    expect(screen.getByTestId("app-sidebar")).toHaveClass("w-60");
+    expect(screen.getByTestId("app-shell")).toHaveClass("flex-row");
   });
 
-  // 验证 Dashboard 不在主导航时仍显示页面内容，并隐藏导航滑块避免落在第一个页签上。
-  it("hides the navigation indicator while dashboard remains active", () => {
+  // 验证 Dashboard 作为左侧导航的第一入口，并在默认页显示选中态。
+  it("keeps overview available as the first sidebar entry", () => {
     // rendered 存储 App 渲染结果，供 Dashboard 初始状态断言使用。
     const rendered = render(<App />);
     rerenderApp = () => rendered.rerender(<App />);
 
     expect(screen.getByText("概览页面")).toBeInTheDocument();
-    expect(screen.getByTestId("tab-active-indicator")).toHaveStyle({ opacity: "0" });
+    // overviewButton 存储左侧导航中的概览入口，用于确认当前页语义态。
+    const overviewButton = within(screen.getByRole("navigation", { name: "主导航" })).getByRole(
+      "button",
+      { name: "概览" }
+    );
+    expect(overviewButton).toHaveAttribute("aria-current", "page");
   });
 
-  // 验证主导航移除概览与应用设置，只保留核心工具入口。
-  it("does not render dashboard or settings as main navigation tabs", () => {
+  // 验证设置入口不混入主导航，而是保留为左侧栏底部操作。
+  it("keeps settings as a sidebar utility action outside main navigation", () => {
     // rendered 存储 App 渲染结果，供导航断言查询 DOM。
     const rendered = render(<App />);
     rerenderApp = () => rendered.rerender(<App />);
 
-    // nav 存储主导航区域，避免页面内容中的“概览”影响导航断言。
+    // nav 存储主导航区域，避免页面内容或工具区操作影响导航断言。
     const nav = screen.getByRole("navigation", { name: "主导航" });
-    expect(within(nav).queryByRole("button", { name: "概览" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("button", { name: "应用设置" })).not.toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "概览" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "设置" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "设置" })).toBeInTheDocument();
   });
 
   // 验证 Hooks、MCP、Agents 作为跨工具能力入口出现在主导航，并能切换到对应页面。
-  it("renders Hooks MCP and Agents as main navigation tabs", async () => {
+  it("renders Hooks MCP and Agents as main sidebar entries", async () => {
     // rendered 存储 App 渲染结果，供 mock store 在页签切换时触发重渲染。
     const rendered = render(<App />);
     rerenderApp = () => rendered.rerender(<App />);
@@ -170,8 +173,8 @@ describe("App tab loading", () => {
     expect(screen.getByText("Agents 页面")).toBeInTheDocument();
   });
 
-  // 验证设置按钮可打开更宽的右侧抽屉，并直接展示概览与真实设置表单内容。
-  it("opens the settings drawer from the top settings button", () => {
+  // 验证设置按钮可从左侧栏打开右侧抽屉，并直接展示概览与真实设置表单内容。
+  it("opens the settings drawer from the sidebar settings button", () => {
     // rendered 存储 App 渲染结果，供 mock store 触发重渲染。
     const rendered = render(<App />);
     rerenderApp = () => rendered.rerender(<App />);
@@ -181,7 +184,7 @@ describe("App tab loading", () => {
     // drawer 存储设置抽屉，确保标题与设置内容都在抽屉内出现。
     const drawer = screen.getByRole("dialog", { name: "设置" });
     expect(drawer).toBeInTheDocument();
-    expect(drawer).toHaveClass("max-w-3xl");
+    expect(drawer).toHaveClass("ant-drawer-content");
     expect(within(drawer).getByText("概览内嵌内容")).toBeInTheDocument();
     expect(within(drawer).getByText("主题")).toBeInTheDocument();
     expect(within(drawer).getByLabelText("VSCode CLI 路径（默认 code）")).toBeInTheDocument();
@@ -219,7 +222,7 @@ describe("App tab loading", () => {
     rerenderApp = () => rendered.rerender(<App />);
 
     // themeButton 存储顶部主题快捷切换按钮。
-    const themeButton = screen.getByRole("button", { name: "切换到浅色主题" });
+    const themeButton = screen.getByRole("button", { name: "切换到跟随系统主题" });
     expect(themeButton.querySelector(".anticon")).toBeInTheDocument();
     expect(themeButton).not.toHaveTextContent("浅色");
     expect(themeButton).not.toHaveTextContent("深色");
@@ -227,6 +230,6 @@ describe("App tab loading", () => {
 
     fireEvent.click(themeButton);
 
-    expect(storeState.prefs.theme).toBe("light");
+    expect(storeState.prefs.theme).toBe("system");
   });
 });

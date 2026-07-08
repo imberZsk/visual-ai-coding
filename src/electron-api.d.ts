@@ -52,6 +52,14 @@ declare global {
         marketplace: string; // 所属 marketplace。
       }) => Promise<string>;
       updateCodexMarketplace: (marketplaceName: string) => Promise<string>; // 更新 Codex marketplace。
+      setPluginEnabled: (payload: {
+        tool: "claude" | "codex"; // 插件所属工具。
+        pluginId: string; // 插件完整 ID。
+        scope: string; // Claude 插件安装作用域，Codex 为空字符串。
+        enabled: boolean; // 目标启用状态。
+        claudeHome: string; // Claude 配置根目录。
+        codexHome: string; // Codex 配置根目录。
+      }) => Promise<string>;
       listSkills: (payload: {
         claudeHome: string; // Claude 配置根目录。
         codexHome: string; // Codex 配置根目录。

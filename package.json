@@ -1,7 +1,7 @@
 {
   "name": "visual-aicoding",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.8.8",
   "description": "可视化管理 Claude Code 与 Codex 配置、插件和工具的 Electron 桌面应用",
   "productName": "VisualAICoding",
   "author": "imber",
@@ -10,13 +10,13 @@
   "scripts": {
     "dev:vite": "node scripts/dev-or-reuse.mjs --host 127.0.0.1 --port 5274 --strictPort",
     "dev:electron": "wait-on tcp:5274 && cross-env NODE_ENV=development electron .",
-    "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev": "concurrently -k -n vite,electron \"node scripts/dev-or-reuse.mjs --host 127.0.0.1 --port 5274 --strictPort\" \"wait-on tcp:5274 && cross-env NODE_ENV=development electron .\"",
     "build": "tsc && vite build",
     "build:ui": "tsc && vite build",
-    "start": "npm run build && cross-env NODE_ENV=production electron .",
+    "start": "tsc && vite build && cross-env NODE_ENV=production electron .",
     "preview": "vite preview",
-    "verify:boot": "npm run build && node scripts/verify-boot.mjs",
-    "dist": "npm run build && electron-builder --mac --arm64",
+    "verify:boot": "tsc && vite build && node scripts/verify-boot.mjs",
+    "dist": "tsc && vite build && electron-builder --mac --arm64",
     "test": "vitest run",
     "test:watch": "vitest"
   },

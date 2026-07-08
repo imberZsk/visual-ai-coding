@@ -1,4 +1,5 @@
 // 配置文件编辑器：加载单个配置文件，提供编辑、保存（含语法校验）、在 VSCode 打开、Finder 定位
+import { Alert, Input } from "antd";
 import { useEffect, useState } from "react";
 import type { ConfigFileSpec } from "../config";
 import type { ConfigFile } from "../types";
@@ -96,7 +97,7 @@ export default function ConfigEditor({ spec }: { spec: ConfigFileSpec }) {
   return (
     <Card>
       {/* 文件标题行：标题 + 状态徽章 + 操作按钮 */}
-      <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-text-main">{spec.title}</span>
@@ -113,7 +114,7 @@ export default function ConfigEditor({ spec }: { spec: ConfigFileSpec }) {
             {spec.desc} · {absPath}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
           <Button onClick={handleReveal} variant="ghost" title="在 Finder 中显示">
             Finder
           </Button>
@@ -130,31 +131,31 @@ export default function ConfigEditor({ spec }: { spec: ConfigFileSpec }) {
       </div>
 
       {/* 内容编辑区 */}
+      {/* loading 占位对齐 textarea 的 h-72 高度：避免文件读取完成后编辑区从 py-8 小占位跳到 288px 文本域，挤压下方卡片（CLS） */}
       {loading ? (
-        <div className="flex items-center justify-center gap-2 py-8 text-sm text-text-muted">
+        <div className="flex h-72 items-center justify-center gap-2 text-sm text-text-muted">
           <LoadingIcon className="h-3.5 w-3.5" />
           <span>加载中…</span>
         </div>
       ) : (
-        <textarea
+        <Input.TextArea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           readOnly={spec.readonly}
           spellCheck={false}
-          className="h-72 w-full resize-y rounded-lg border border-border bg-surface p-3 font-mono text-xs leading-relaxed text-text-main outline-none focus:border-accent read-only:opacity-80"
+          className="visual-config-raw-textarea"
           placeholder={file?.exists ? "" : "文件不存在，保存后将创建"}
         />
       )}
 
       {/* 操作结果提示 */}
       {message && (
-        <div
-          className={`mt-2 text-xs ${
-            message.type === "ok" ? "text-green-500" : "text-red-500"
-          }`}
-        >
-          {message.text}
-        </div>
+        <Alert
+          className="mt-3"
+          message={message.text}
+          showIcon
+          type={message.type === "ok" ? "success" : "error"}
+        />
       )}
     </Card>
   );
