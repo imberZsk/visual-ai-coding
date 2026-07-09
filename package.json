@@ -5,6 +5,28 @@
   "description": "可视化管理 Claude Code 与 Codex 配置、插件和工具的 Electron 桌面应用",
   "productName": "VisualAICoding",
   "author": "imber",
+  "license": "MIT",
+  "packageManager": "pnpm@11.7.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imberZsk/visual-aicoding.git"
+  },
+  "homepage": "https://visual-aicoding-docs.netlify.app",
+  "bugs": {
+    "url": "https://github.com/imberZsk/visual-aicoding/issues"
+  },
+  "keywords": [
+    "electron",
+    "claude-code",
+    "codex",
+    "plugins",
+    "react",
+    "vite",
+    "developer-tools"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "main": "electron/main.js",
   "type": "module",
   "scripts": {
@@ -13,10 +35,11 @@
     "dev": "concurrently -k -n vite,electron \"node scripts/dev-or-reuse.mjs --host 127.0.0.1 --port 5274 --strictPort\" \"wait-on tcp:5274 && cross-env NODE_ENV=development electron .\"",
     "build": "tsc && vite build",
     "build:ui": "tsc && vite build",
-    "start": "tsc && vite build && cross-env NODE_ENV=production electron .",
+    "start": "pnpm run build:ui && cross-env NODE_ENV=production electron .",
     "preview": "vite preview",
-    "verify:boot": "tsc && vite build && node scripts/verify-boot.mjs",
-    "dist": "tsc && vite build && electron-builder --mac --arm64",
+    "verify:boot": "pnpm run build:ui && node scripts/verify-boot.mjs",
+    "dist": "pnpm run build:ui && electron-builder --mac --arm64 --publish never",
+    "dist:win": "pnpm run build:ui && electron-builder --win --x64 --publish never",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -51,6 +74,13 @@
   "build": {
     "appId": "com.imber.visual-aicoding",
     "productName": "VisualAICoding",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "imberZsk",
+        "repo": "visual-aicoding"
+      }
+    ],
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -74,6 +104,27 @@
     },
     "dmg": {
       "title": "VisualAICoding ${version}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": "x64"
+        },
+        {
+          "target": "portable",
+          "arch": "x64"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "artifactName": "VisualAICoding-${version}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "VisualAICoding-${version}-portable.${ext}"
     }
   }
 }

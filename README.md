@@ -4,6 +4,8 @@
 
 把散落在 `~/.claude`、`~/.codex` 下的配置文件、插件、市场用图形界面统一管理：查看工具安装状态、可视化编辑核心配置（带语法校验与原始文本兜底）、检查插件可用版本并拉取更新、一键在 VSCode / Finder 打开，支持主题切换。
 
+官网文档框架：<https://visual-aicoding-docs.netlify.app>
+
 ## 技术栈
 
 - Electron（主进程 + preload 安全桥 + Vite 渲染进程）
@@ -26,17 +28,18 @@
 ## 开发
 
 ```bash
-npm install          # 安装依赖
-npm run dev          # 开发模式（Vite + Electron 热更新）
-npm run dist         # 打包 .app + .dmg
+pnpm install         # 安装依赖
+pnpm dev             # 开发模式（Vite + Electron 热更新）
+pnpm run dist        # 打包 macOS arm64 DMG
+pnpm run dist:win    # 打包 Windows x64 安装包 + 便携版
 ```
 
 构建与验证：
 
 ```bash
-npm run build        # 类型检查 + 渲染进程构建
-npm run verify:boot  # 构建并执行 Electron 启动冒烟测试
-npm test             # 运行全部前端 / Node / Electron IPC 测试
+pnpm run build       # 类型检查 + 渲染进程构建
+pnpm run verify:boot # 构建并执行 Electron 启动冒烟测试
+pnpm test            # 运行全部前端 / Node / Electron IPC 测试
 ```
 
 ## 设计要点

@@ -11,12 +11,13 @@ Visual AI Coding 是一个 Electron 桌面应用（macOS），用图形界面统
 ## 常用命令
 
 ```bash
-npm run dev          # 开发模式（Electron + Vite 热更新，固定 5273 端口）
-npm run dist         # 打包 .app + .dmg
-npm run build        # 类型检查 (tsc) + 渲染进程构建
-npm run verify:boot  # 构建并运行 Electron 启动冒烟测试
-npm test             # 运行全部前端/脚本测试（vitest run）
-npm run test:watch   # watch 模式
+pnpm dev             # 开发模式（Electron + Vite 热更新，固定 5274 端口）
+pnpm run dist        # 打包 macOS arm64 DMG，产物在 release/
+pnpm run dist:win    # 打包 Windows x64 安装包 + 便携版，需在 Windows 上运行
+pnpm run build       # 类型检查 (tsc) + 渲染进程构建
+pnpm run verify:boot # 构建并运行 Electron 启动冒烟测试
+pnpm test            # 运行全部前端/脚本测试（vitest run）
+pnpm run test:watch  # watch 模式
 ```
 
 运行单个测试文件或用例：
@@ -27,7 +28,7 @@ npx vitest run -t "resolveDevServerAction"               # 按用例名过滤
 npx vitest run test/core/plugins.test.js                 # 单个 Node 后端测试
 ```
 
-`.npmrc` 指向内网 npm registry，`npm install` 需能访问该地址。
+本项目使用 pnpm 与 `pnpm-lock.yaml`，不要提交 `.npmrc`、`package-lock.json` 或 `yarn.lock`。
 
 ## 架构
 
