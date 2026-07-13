@@ -213,7 +213,14 @@ describe("core plugins", () => {
     );
     writeFileSync(
       join(codexHome, "config.toml"),
-      `[marketplaces.openai-bundled]\nsource_type = "local"\nsource = "${marketplaceRoot}"\n`,
+      TOML.stringify({
+        marketplaces: {
+          "openai-bundled": {
+            source_type: "local",
+            source: marketplaceRoot,
+          },
+        },
+      }),
     );
 
     // result 存储模拟 CLI fallback 中缺失可用版本的 browser 插件。
