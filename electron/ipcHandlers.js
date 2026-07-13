@@ -36,9 +36,8 @@ import {
 // registerIpcHandlers 注册 Electron IPC handler。
 // ipcMain 参数存储 Electron ipcMain，deps 参数保留 shell 等可注入依赖以便测试扩展。
 export function registerIpcHandlers(ipcMain, deps = {}) {
-  // injectedDeps 存储测试或主进程注入的依赖；当前核心逻辑不依赖它，但保留接口与 visual-worktree 一致。
+  // injectedDeps 存储测试或主进程注入的 Electron shell 等依赖。
   const injectedDeps = deps;
-  void injectedDeps;
 
   ipcMain.handle(IPC.GET_PREFERENCES, () => getPreferences());
   ipcMain.handle(IPC.SAVE_PREFERENCES, (_event, prefs) => savePreferences(prefs));
@@ -106,4 +105,13 @@ export function registerIpcHandlers(ipcMain, deps = {}) {
     openInVscode(payload.vscodePath, payload.target),
   );
   ipcMain.handle(IPC.REVEAL_IN_FINDER, (_event, target) => revealInFinder(target));
+  ipcMain.handle(IPC.OPEN_EXTERNAL_URL, (_event, url) => {
+    // parsedUrl 存储解析后的外链地址，用于限制主进程只打开 HTTPS 页面。
+    const parsedUrl = new URL(url);
+    if (parsedUrl.protocol !== "https:") {
+      // 非 HTTPS 协议可能触发本机应用或危险 URL scheme，不允许从渲染进程打开。
+      throw new Error("仅支持打开 HTTPS 网址");
+    }
+    return injectedDeps.shell.openExternal(parsedUrl.toString());
+  });
 }

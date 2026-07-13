@@ -72,6 +72,7 @@ declare global {
         target: string; // 要打开的目标路径。
       }) => Promise<void>;
       revealInFinder: (target: string) => Promise<void>; // 在 Finder 中显示路径。
+      openExternalUrl: (url: string) => Promise<void>; // 使用系统浏览器打开 HTTPS 外部网址。
     };
   }
 }

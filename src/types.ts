@@ -108,6 +108,7 @@ export interface ToolLatestVersion {
   tool_id: string; // 工具标识
   package_name: string; // 查询所用 npm 包名
   latest_version: string; // npm registry 返回的最新版本
+  release_notes_url: string; // 官方 changelog 或 releases 页面网址
 }
 
 // 单个 Skill 信息，对应 Rust SkillInfo

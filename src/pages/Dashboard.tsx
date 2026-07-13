@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useAppStore } from "../store";
 import { PageHeader, Card, Badge, Button, PageShell } from "../components/ui";
-import { revealInFinder, openInVscode } from "../api";
+import { openExternalUrl, revealInFinder, openInVscode } from "../api";
 import type { ToolStatus } from "../types";
 import { comparePluginVersions } from "../utils/versionCompare";
 
@@ -11,6 +11,7 @@ const IDLE_VERSION_CHECK = {
   loading: false,
   updating: false,
   latestVersion: "",
+  releaseNotesUrl: "",
   error: "",
   updateMessage: "",
 };
@@ -140,6 +141,18 @@ export function DashboardContent({ compact = false }: DashboardContentProps) {
                   <div className="flex flex-wrap items-center gap-2">
                     <span>最新版本：{versionCheck.latestVersion}</span>
                     {getVersionBadge(tool.version, versionCheck.latestVersion)}
+                    {versionCheck.releaseNotesUrl && (
+                      <Button
+                        onClick={() => {
+                          void openExternalUrl(versionCheck.releaseNotesUrl).catch((error) =>
+                            console.error(error)
+                          );
+                        }}
+                        variant="ghost"
+                      >
+                        查看更新内容
+                      </Button>
+                    )}
                   </div>
                 )}
                 {versionCheck.error && (

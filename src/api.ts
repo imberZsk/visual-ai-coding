@@ -187,6 +187,12 @@ export function revealInFinder(target: string): Promise<void> {
   return getElectronApi().revealInFinder(target);
 }
 
+// 使用系统浏览器打开 HTTPS 外部网址。
+// url 参数存储需要打开的完整网址。
+export function openExternalUrl(url: string): Promise<void> {
+  return getElectronApi().openExternalUrl(url);
+}
+
 // 扫描 Claude / Codex / Agents 可用 Skill 列表
 // claudeHome 与 codexHome 分别为对应工具的配置根目录。
 export function listSkills(

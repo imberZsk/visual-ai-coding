@@ -8,6 +8,7 @@ import {
   npmPackageForTool,
   parseLatestVersionStdout,
   parseToolVersionStdout,
+  releaseNotesUrlForTool,
 } from "../../src/core/system.js";
 
 describe("core system", () => {
@@ -15,6 +16,15 @@ describe("core system", () => {
   it("maps tool ids to npm package names", () => {
     expect(npmPackageForTool("claude")).toBe("@anthropic-ai/claude-code");
     expect(npmPackageForTool("codex")).toBe("@openai/codex");
+  });
+
+  // 验证工具标识映射到对应的官方更新内容页面。
+  it("maps tool ids to official release notes", () => {
+    expect(releaseNotesUrlForTool("claude")).toBe(
+      "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md",
+    );
+    expect(releaseNotesUrlForTool("codex")).toBe("https://github.com/openai/codex/releases");
+    expect(releaseNotesUrlForTool("unknown")).toBe("");
   });
 
   // 验证工具标识映射到正确 CLI 名称。

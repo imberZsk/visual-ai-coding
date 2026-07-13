@@ -20,7 +20,9 @@ describe("electron ipc handlers", () => {
     // ipcMain 存储 Electron ipcMain 的测试替身。
     const ipcMain = createFakeIpcMain();
 
-    registerIpcHandlers(ipcMain, { shell: { openPath: vi.fn(), showItemInFolder: vi.fn() } });
+    registerIpcHandlers(ipcMain, {
+      shell: { openExternal: vi.fn(), openPath: vi.fn(), showItemInFolder: vi.fn() },
+    });
 
     expect(ipcMain.handle).toHaveBeenCalledWith(IPC.GET_PREFERENCES, expect.any(Function));
     expect(ipcMain.handle).toHaveBeenCalledWith(IPC.READ_CONFIG_FILE, expect.any(Function));
@@ -28,5 +30,27 @@ describe("electron ipc handlers", () => {
     expect(ipcMain.handle).toHaveBeenCalledWith(IPC.SET_PLUGIN_ENABLED, expect.any(Function));
     expect(ipcMain.handle).toHaveBeenCalledWith(IPC.LIST_SKILLS, expect.any(Function));
     expect(ipcMain.handle).toHaveBeenCalledWith(IPC.DETECT_TOOLS, expect.any(Function));
+    expect(ipcMain.handle).toHaveBeenCalledWith(IPC.OPEN_EXTERNAL_URL, expect.any(Function));
+  });
+
+  // 验证外链 IPC 只允许 HTTPS，并将合法网址交给系统浏览器。
+  it("opens only HTTPS external URLs", async () => {
+    // ipcMain 存储 IPC handler 注册结果，便于直接调用外链处理函数。
+    const ipcMain = createFakeIpcMain();
+    // openExternal 存储 Electron shell.openExternal 的测试替身。
+    const openExternal = vi.fn().mockResolvedValue(undefined);
+
+    registerIpcHandlers(ipcMain, {
+      shell: { openExternal, openPath: vi.fn(), showItemInFolder: vi.fn() },
+    });
+
+    // openExternalHandler 存储已注册的外链处理函数。
+    const openExternalHandler = ipcMain.handlers.get(IPC.OPEN_EXTERNAL_URL);
+    await openExternalHandler({}, "https://github.com/openai/codex/releases");
+
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/openai/codex/releases");
+    expect(() => openExternalHandler({}, "file:///etc/passwd")).toThrow(
+      "仅支持打开 HTTPS 网址",
+    );
   });
 });

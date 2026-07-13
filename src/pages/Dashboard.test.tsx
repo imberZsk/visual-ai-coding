@@ -8,6 +8,8 @@ import { useAppStore } from "../store";
 const revealInFinderMock = vi.fn();
 // openInVscodeMock 存储 VSCode 打开命令的测试替身。
 const openInVscodeMock = vi.fn();
+// openExternalUrlMock 存储系统浏览器打开外部网址命令的测试替身。
+const openExternalUrlMock = vi.fn();
 // checkToolLatestVersionMock 存储查询工具最新版本命令的测试替身。
 const checkToolLatestVersionMock = vi.fn();
 // updateToolCliMock 存储更新工具 CLI 命令的测试替身。
@@ -39,6 +41,7 @@ function createDeferred<T>(): DeferredValue<T> {
 vi.mock("../api", () => ({
   revealInFinder: (...args: unknown[]) => revealInFinderMock(...args),
   openInVscode: (...args: unknown[]) => openInVscodeMock(...args),
+  openExternalUrl: (...args: unknown[]) => openExternalUrlMock(...args),
   checkToolLatestVersion: (...args: unknown[]) => checkToolLatestVersionMock(...args),
   updateToolCli: (...args: unknown[]) => updateToolCliMock(...args),
   detectTools: (...args: unknown[]) => detectToolsMock(...args),
@@ -76,6 +79,7 @@ describe("Dashboard", () => {
   beforeEach(() => {
     revealInFinderMock.mockReset();
     openInVscodeMock.mockReset();
+    openExternalUrlMock.mockReset();
     checkToolLatestVersionMock.mockReset();
     updateToolCliMock.mockReset();
     detectToolsMock.mockReset();
@@ -90,6 +94,7 @@ describe("Dashboard", () => {
       },
     ]);
     savePreferencesMock.mockResolvedValue(undefined);
+    openExternalUrlMock.mockResolvedValue(undefined);
     resetDashboardStore();
   });
 
@@ -143,6 +148,7 @@ describe("Dashboard", () => {
       tool_id: string;
       package_name: string;
       latest_version: string;
+      release_notes_url: string;
     }>();
 
     checkToolLatestVersionMock.mockReturnValue(versionDeferred.promise);
@@ -170,10 +176,15 @@ describe("Dashboard", () => {
       tool_id: "claude",
       package_name: "@anthropic-ai/claude-code",
       latest_version: "2.1.196",
+      release_notes_url: "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md",
     });
 
     expect(await screen.findByText("最新版本：2.1.196")).toBeInTheDocument();
     expect(screen.getByText("可更新")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "查看更新内容" }));
+    expect(openExternalUrlMock).toHaveBeenCalledWith(
+      "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md",
+    );
   });
 
   // 验证查询最新版本时会同步刷新本地 CLI 版本，避免展示已过期的启动时缓存。
@@ -271,6 +282,7 @@ describe("Dashboard", () => {
       tool_id: string;
       package_name: string;
       latest_version: string;
+      release_notes_url: string;
     }>();
 
     checkToolLatestVersionMock.mockReturnValue(versionDeferred.promise);
@@ -294,6 +306,7 @@ describe("Dashboard", () => {
       tool_id: "claude",
       package_name: "@anthropic-ai/claude-code",
       latest_version: "2.1.196",
+      release_notes_url: "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md",
     });
 
     expect(await screen.findByText("最新版本：2.1.196")).toBeInTheDocument();

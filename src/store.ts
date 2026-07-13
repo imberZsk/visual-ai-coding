@@ -73,6 +73,7 @@ interface ToolVersionCheckState {
   loading: boolean; // loading 表示该工具是否正在查询最新版本。
   updating: boolean; // updating 表示该工具是否正在执行 CLI 更新。
   latestVersion: string; // latestVersion 存储 npm registry 返回的最新版本号。
+  releaseNotesUrl: string; // releaseNotesUrl 存储官方更新内容页面网址。
   error: string; // error 存储最新版本查询或更新失败时的错误信息。
   updateMessage: string; // updateMessage 存储 CLI 更新完成后的结果提示。
 }
@@ -132,6 +133,7 @@ function createIdleToolVersionCheck(): ToolVersionCheckState {
     loading: false,
     updating: false,
     latestVersion: "",
+    releaseNotesUrl: "",
     error: "",
     updateMessage: "",
   };
@@ -525,6 +527,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               ...(state.toolVersionChecks[toolId] ?? createIdleToolVersionCheck()),
               loading: false,
               latestVersion: latestResult.latest_version,
+              releaseNotesUrl: latestResult.release_notes_url,
               error: "",
               updateMessage: "",
             },

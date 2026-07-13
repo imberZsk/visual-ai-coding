@@ -17,6 +17,18 @@ export function npmPackageForTool(toolId) {
   return undefined;
 }
 
+// releaseNotesUrlForTool 返回指定工具的官方更新内容网址。
+// toolId 参数存储工具标识，如 claude / codex。
+export function releaseNotesUrlForTool(toolId) {
+  // releaseNotesUrls 存储工具标识到官方 changelog 或 releases 页面的映射。
+  const releaseNotesUrls = {
+    claude: "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md",
+    codex: "https://github.com/openai/codex/releases",
+  };
+
+  return releaseNotesUrls[toolId] ?? "";
+}
+
 // binForTool 根据工具标识返回 CLI 可执行文件名。
 // toolId 参数存储工具标识，如 claude / codex。
 export function binForTool(toolId) {
@@ -174,6 +186,7 @@ export async function checkToolLatestVersion(toolId) {
     tool_id: toolId,
     package_name: packageName,
     latest_version: parseLatestVersionStdout(output.stdout),
+    release_notes_url: releaseNotesUrlForTool(toolId),
   };
 }
 

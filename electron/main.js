@@ -1,5 +1,5 @@
 // Electron 主进程入口：创建窗口、注册 IPC、加载 Vite/构建后的渲染进程。
-import { app, BrowserWindow, ipcMain, session } from "electron";
+import { app, BrowserWindow, ipcMain, session, shell } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
@@ -115,7 +115,7 @@ async function runSmokeCheck(win) {
   }
 }
 
-registerIpcHandlers(ipcMain);
+registerIpcHandlers(ipcMain, { shell });
 
 app.whenReady().then(async () => {
   // 并行预热 SSH socket 与登录 shell PATH，不 await——两者均在后台静默完成，

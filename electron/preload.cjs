@@ -27,6 +27,7 @@ const IPC = {
   DETECT_TOOLS: "detect-tools",
   OPEN_IN_VSCODE: "open-in-vscode",
   REVEAL_IN_FINDER: "reveal-in-finder",
+  OPEN_EXTERNAL_URL: "open-external-url",
 };
 
 // api 存储暴露给渲染进程的受限调用集合。
@@ -79,6 +80,8 @@ const api = {
   openInVscode: (payload) => ipcRenderer.invoke(IPC.OPEN_IN_VSCODE, payload),
   // revealInFinder 在 Finder 中显示路径。
   revealInFinder: (target) => ipcRenderer.invoke(IPC.REVEAL_IN_FINDER, target),
+  // openExternalUrl 使用系统浏览器打开经过主进程校验的外部网址。
+  openExternalUrl: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL_URL, url),
 };
 
 contextBridge.exposeInMainWorld("api", api);

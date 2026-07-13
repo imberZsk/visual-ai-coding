@@ -24,4 +24,5 @@ export const IPC = {
   DETECT_TOOLS: "detect-tools",
   OPEN_IN_VSCODE: "open-in-vscode",
   REVEAL_IN_FINDER: "reveal-in-finder",
+  OPEN_EXTERNAL_URL: "open-external-url",
 };
