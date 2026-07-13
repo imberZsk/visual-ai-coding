@@ -26,21 +26,32 @@ function renderPage(tab: string) {
     // Codex 配置页
     case "codex":
       return <CodexPage />;
-    // Hooks 能力页
+    // 历史能力页签回退到 Codex 分组，兼容升级前保存的偏好值
     case "hooks":
-      return <HooksPage />;
-    // MCP 能力页
+    case "codex-hooks":
+      return <HooksPage tool="codex" />;
+    case "claude-hooks":
+      return <HooksPage tool="claude" />;
     case "mcp":
-      return <McpPage />;
-    // Agents 能力页
+    case "codex-mcp":
+      return <McpPage tool="codex" />;
+    case "claude-mcp":
+      return <McpPage tool="claude" />;
     case "agents":
-      return <AgentsPage />;
-    // 插件管理页
+    case "codex-agents":
+      return <AgentsPage tool="codex" />;
+    case "claude-agents":
+      return <AgentsPage tool="claude" />;
     case "plugins":
-      return <PluginsPage />;
-    // Skill 清单页
+    case "codex-plugins":
+      return <PluginsPage tool="codex" />;
+    case "claude-plugins":
+      return <PluginsPage tool="claude" />;
     case "skills":
-      return <SkillsPage />;
+    case "codex-skills":
+      return <SkillsPage tool="codex" />;
+    case "claude-skills":
+      return <SkillsPage tool="claude" />;
     // 应用设置页
     case "settings":
       return <SettingsPage />;

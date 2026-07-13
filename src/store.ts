@@ -43,6 +43,12 @@ interface PluginUpdateOperation {
   promise: Promise<void>; // promise 存储本次更新任务，供重复点击复用。
 }
 
+// PluginCheckFeedback 描述单个插件最近一次只读版本检查结果。
+interface PluginCheckFeedback {
+  phase: "ok" | "warning" | "err"; // phase 存储检查结果语义，用于控制反馈颜色。
+  text: string; // text 存储面向用户的版本检查结果文案。
+}
+
 // PluginToggleFeedback 描述单条插件启停操作的执行阶段与反馈文本。
 interface PluginToggleFeedback {
   target: string; // target 存储当前启停中的插件名称或最近启停完成的插件名称。
@@ -60,10 +66,12 @@ interface PluginToggleOperation {
 interface PluginPageState {
   claude: PluginToolCheckState; // claude 存储 Claude 插件检查状态。
   codex: PluginToolCheckState; // codex 存储 Codex 插件检查状态。
-  refreshingAll: boolean; // refreshingAll 标记顶部“刷新全部”是否正在执行。
+  refreshingAll: boolean; // refreshingAll 标记顶部“检查全部更新”是否正在执行。
   update: PluginUpdateFeedback | null; // update 存储当前插件更新操作的反馈信息。
   toggle: PluginToggleFeedback | null; // toggle 存储当前插件启停操作的反馈信息。
   checking: Partial<Record<PluginToolId, Promise<void>>>; // checking 存储各工具正在执行的检查 Promise。
+  checkingPlugins: Record<string, Promise<void> | undefined>; // checkingPlugins 存储各插件正在执行的只读版本检查 Promise。
+  pluginCheckResults: Record<string, PluginCheckFeedback>; // pluginCheckResults 存储各插件最近一次只读检查结果。
   updating: Record<string, PluginUpdateOperation>; // updating 存储各插件正在执行的更新 Promise。
   toggling: Record<string, PluginToggleOperation>; // toggling 存储各插件正在执行的启停 Promise。
 }
@@ -92,6 +100,8 @@ function createInitialPluginPageState(): PluginPageState {
     update: null,
     toggle: null,
     checking: {},
+    checkingPlugins: {},
+    pluginCheckResults: {},
     updating: {},
     toggling: {},
   };
@@ -173,6 +183,8 @@ interface AppState {
   checkPluginUpdates: (tool: PluginToolId) => Promise<void>;
   // 并行检查 Claude 与 Codex 插件更新状态
   checkAllPluginUpdates: () => Promise<void>;
+  // 只读检查指定插件是否存在新版本
+  checkSinglePluginUpdate: (tool: PluginToolId, plugin: ToolPluginInfo) => Promise<void>;
   // 更新指定工具下的单个插件
   updatePlugin: (tool: PluginToolId, plugin: ToolPluginInfo) => Promise<void>;
   // 启用或禁用指定工具下的单个插件
@@ -318,6 +330,89 @@ export const useAppStore = create<AppState>((set, get) => ({
         pluginPage: { ...state.pluginPage, refreshingAll: false },
       }));
     }
+  },
+
+  // 只读检查单个插件是否存在新版本；后端 CLI 按工具返回插件清单，前端仅为目标插件展示 loading。
+  checkSinglePluginUpdate: (tool, plugin) => {
+    // key 存储当前插件检查任务的唯一标识。
+    const key = pluginUpdateKey(tool, plugin);
+    // existingPromise 存储同一插件已经执行中的检查任务。
+    const existingPromise = get().pluginPage.checkingPlugins[key];
+    if (existingPromise) {
+      // 同一插件仍在检查时复用任务，避免重复调用 CLI。
+      return existingPromise;
+    }
+
+    // home 存储当前工具对应的配置根目录。
+    const home =
+      tool === "claude" ? get().prefs?.claude_home || "" : get().prefs?.codex_home || "";
+    if (!home) {
+      return Promise.resolve();
+    }
+
+    // promise 存储本次只读版本检查任务。
+    const promise = (async () => {
+      try {
+        // result 存储 CLI 返回的插件版本清单，包含目标插件的可用版本。
+        const result =
+          tool === "claude"
+            ? await checkClaudePluginUpdates(home)
+            : await checkCodexPluginUpdates(home);
+        // checkedPlugin 存储检查结果中与用户点击目标匹配的插件。
+        const checkedPlugin = result.plugins.find((item) => {
+          return item.id === plugin.id && item.scope === plugin.scope;
+        });
+        // feedback 存储根据版本状态生成的明确检查结果。
+        const feedback: PluginCheckFeedback = !checkedPlugin
+          ? { phase: "err", text: "检查完成，但未在最新插件清单中找到该插件" }
+          : checkedPlugin.update_status === "newer"
+          ? {
+              phase: "warning",
+              text: `发现新版本 ${checkedPlugin.available_version || "（版本号未知）"}`,
+            }
+          : checkedPlugin.update_status === "same"
+          ? { phase: "ok", text: "当前已是最新版本" }
+          : {
+              phase: "warning",
+              text: `检查完成，当前版本 ${checkedPlugin.current_version || "未知"}，可用版本 ${
+                checkedPlugin.available_version || "未知"
+              }`,
+            };
+        set((state) => ({
+          pluginPage: {
+            ...state.pluginPage,
+            [tool]: { loading: false, result, error: "" },
+            pluginCheckResults: { ...state.pluginPage.pluginCheckResults, [key]: feedback },
+          },
+        }));
+      } catch (error) {
+        set((state) => ({
+          pluginPage: {
+            ...state.pluginPage,
+            [tool]: { ...state.pluginPage[tool], error: String(error) },
+            pluginCheckResults: {
+              ...state.pluginPage.pluginCheckResults,
+              [key]: { phase: "err", text: `检查失败：${String(error)}` },
+            },
+          },
+        }));
+      } finally {
+        set((state) => ({
+          pluginPage: {
+            ...state.pluginPage,
+            checkingPlugins: withoutPromiseKey(state.pluginPage.checkingPlugins, key),
+          },
+        }));
+      }
+    })();
+
+    set((state) => ({
+      pluginPage: {
+        ...state.pluginPage,
+        checkingPlugins: { ...state.pluginPage.checkingPlugins, [key]: promise },
+      },
+    }));
+    return promise;
   },
 
   // 更新指定工具下的单个插件；相同插件已有任务时复用 Promise，避免重复拉取。

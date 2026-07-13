@@ -4,6 +4,8 @@ import {
   Button as AntButton,
   Empty,
   Input,
+  Segmented,
+  Select,
   Space,
   Spin,
   Table,
@@ -20,6 +22,47 @@ import type { SkillInfo, SkillListResult } from "../types";
 
 // INITIAL_SKILL_LOAD_DELAY_MS 存储首次扫描延迟，用于让 tab 切换动画先完成。
 const INITIAL_SKILL_LOAD_DELAY_MS = 180;
+
+// ALL_SKILL_FILTER 存储筛选控件的“全部”值，避免与真实工具或来源名称冲突。
+const ALL_SKILL_FILTER = "all";
+
+// DEFAULT_SKILL_TOOL 存储技能页首次打开和清除筛选后使用的默认工具分类。
+const DEFAULT_SKILL_TOOL = "codex";
+
+// SKILL_TABLE_RESERVED_HEIGHT 存储页面中表格以外区域的预估高度，用于计算可展示行数。
+const SKILL_TABLE_RESERVED_HEIGHT = 390;
+
+// SKILL_TABLE_ROW_HEIGHT 存储单行技能内容的预估高度，包含三行用途文本所需空间。
+const SKILL_TABLE_ROW_HEIGHT = 86;
+
+// MIN_SKILL_PAGE_SIZE 存储小窗口下每页至少展示的技能数量。
+const MIN_SKILL_PAGE_SIZE = 5;
+
+// MAX_SKILL_PAGE_SIZE 存储大窗口下每页最多展示的技能数量，避免单页过长影响定位。
+const MAX_SKILL_PAGE_SIZE = 20;
+
+// SKILL_TOOL_OPTIONS 存储技能所属工具的固定分类选项。
+const SKILL_TOOL_OPTIONS = [
+  { label: "Codex", value: "codex" },
+  { label: "Claude", value: "claude" },
+  { label: "Agents", value: "agents" },
+  { label: "全部", value: ALL_SKILL_FILTER },
+];
+
+// SkillsPageProps 描述技能页当前所属的一级工具。
+interface SkillsPageProps {
+  tool?: "claude" | "codex"; // tool 存储固定展示的 Skill 工具作用域，省略时保留工具筛选控件。
+}
+
+// calculateSkillPageSize 根据窗口高度计算技能表每页展示数量。
+// windowHeight 为当前渲染窗口的内部高度。
+function calculateSkillPageSize(windowHeight: number): number {
+  // availableHeight 存储扣除页头、筛选区和分页器后可供表格行使用的高度。
+  const availableHeight = Math.max(0, windowHeight - SKILL_TABLE_RESERVED_HEIGHT);
+  // visibleRows 存储当前高度理论上可以完整容纳的技能行数。
+  const visibleRows = Math.floor(availableHeight / SKILL_TABLE_ROW_HEIGHT);
+  return Math.min(MAX_SKILL_PAGE_SIZE, Math.max(MIN_SKILL_PAGE_SIZE, visibleRows));
+}
 
 // VscodeIcon 渲染简化版 VSCode logo，用于 Skill 行的“在 VSCode 中打开”图标按钮。
 function VscodeIcon() {
@@ -44,16 +87,22 @@ function toolTagColor(tool: SkillInfo["tool"]): string {
   return "success";
 }
 
-// filterSkills 按名称、说明、来源、插件与路径过滤 skill。
-// skills 为完整 skill 列表，query 为用户输入的搜索关键词。
-function filterSkills(skills: SkillInfo[], query: string): SkillInfo[] {
+// filterSkills 按关键词、工具分类和来源过滤 skill。
+// skills 为完整 skill 列表，query 为搜索关键词，tool/source 为当前分类筛选值。
+function filterSkills(
+  skills: SkillInfo[],
+  query: string,
+  tool: string,
+  source: string
+): SkillInfo[] {
   // keyword 存储归一化后的搜索关键词。
   const keyword = query.trim().toLowerCase();
-  if (!keyword) {
-    return skills;
-  }
 
   return skills.filter((skill) => {
+    // matchesTool 标记当前 skill 是否符合工具分类。
+    const matchesTool = tool === ALL_SKILL_FILTER || skill.tool === tool;
+    // matchesSource 标记当前 skill 是否符合来源分类。
+    const matchesSource = source === ALL_SKILL_FILTER || skill.source === source;
     // haystack 存储参与搜索匹配的 skill 文本字段集合。
     const haystack = [
       skill.name,
@@ -65,8 +114,10 @@ function filterSkills(skills: SkillInfo[], query: string): SkillInfo[] {
     ]
       .join(" ")
       .toLowerCase();
+    // matchesKeyword 标记当前 skill 是否符合文本搜索条件。
+    const matchesKeyword = !keyword || haystack.includes(keyword);
 
-    return haystack.includes(keyword);
+    return matchesTool && matchesSource && matchesKeyword;
   });
 }
 
@@ -81,9 +132,11 @@ function getSkillRowKey(skill: SkillInfo): string {
 function SkillTable({
   skills,
   vscodePath,
+  pageSize,
 }: {
   skills: SkillInfo[]; // skills 存储当前需要展示的 skill 列表。
   vscodePath: string; // vscodePath 存储用户配置的 VSCode CLI 路径。
+  pageSize: number; // pageSize 存储按当前窗口高度计算的每页技能数量。
 }) {
   // columns 存储 Ant Design Table 列配置，集中声明每列如何消费 skill 字段。
   const columns: TableColumnsType<SkillInfo> = [
@@ -176,7 +229,12 @@ function SkillTable({
       className="skill-directory-table"
       columns={columns}
       dataSource={skills}
-      pagination={false}
+      pagination={{
+        pageSize,
+        showSizeChanger: false,
+        hideOnSinglePage: true,
+        showTotal: (total) => `共 ${total} 条`,
+      }}
       rowKey={getSkillRowKey}
       size="small"
       tableLayout="fixed"
@@ -185,7 +243,7 @@ function SkillTable({
 }
 
 // SkillsPage 展示本机可用 skill 列表。
-export default function SkillsPage() {
+export default function SkillsPage({ tool }: SkillsPageProps) {
   // claudeHome 存储 Claude 配置根目录。
   const claudeHome = useAppStore((state) => state.prefs?.claude_home || "");
   // codexHome 存储 Codex 配置根目录。
@@ -203,6 +261,12 @@ export default function SkillsPage() {
   const [error, setError] = useState("");
   // query 存储搜索框输入内容。
   const [query, setQuery] = useState("");
+  // toolFilter 存储当前选中的工具分类。
+  const [toolFilter, setToolFilter] = useState<string>(tool || DEFAULT_SKILL_TOOL);
+  // sourceFilter 存储当前选中的来源分类。
+  const [sourceFilter, setSourceFilter] = useState(ALL_SKILL_FILTER);
+  // pageSize 存储当前窗口高度对应的技能表分页条数。
+  const [pageSize, setPageSize] = useState(() => calculateSkillPageSize(window.innerHeight));
   // loadingRef 存储正在执行的 loadSkills 请求序号，用于丢弃过期请求结果，避免竞态覆盖。
   const loadingRef = useRef(0);
 
@@ -240,17 +304,51 @@ export default function SkillsPage() {
     };
   }, [claudeHome, codexHome]);
 
-  // filteredSkills 存储按当前搜索词过滤后的 skill 列表。
-  const filteredSkills = useMemo(
-    () => filterSkills(result.skills, query),
-    [result.skills, query]
+  useEffect(() => {
+    // handleResize 在窗口尺寸变化时重新计算技能表每页条数。
+    function handleResize() {
+      setPageSize(calculateSkillPageSize(window.innerHeight));
+    }
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  // sourceOptions 存储从扫描结果动态生成的来源筛选选项。
+  const sourceOptions = useMemo(() => {
+    // sources 存储去重并按中文名称排序后的技能来源。
+    const sources = [...new Set(result.skills.map((skill) => skill.source || "未知来源"))]
+      .sort((left, right) => left.localeCompare(right, "zh-CN"));
+    return [
+      { label: "全部来源", value: ALL_SKILL_FILTER },
+      ...sources.map((source) => ({ label: source, value: source })),
+    ];
+  }, [result.skills]);
+
+  // hasActiveFilters 标记当前是否存在任意搜索或分类筛选条件。
+  const hasActiveFilters = Boolean(
+    query.trim() || (!tool && toolFilter !== DEFAULT_SKILL_TOOL) || sourceFilter !== ALL_SKILL_FILTER
   );
+  // filteredSkills 存储按当前搜索词、工具和来源过滤后的 skill 列表。
+  const filteredSkills = useMemo(
+    () => filterSkills(result.skills, query, toolFilter, sourceFilter),
+    [result.skills, query, toolFilter, sourceFilter]
+  );
+
+  // clearFilters 清空技能页的搜索与分类筛选条件。
+  function clearFilters() {
+    setQuery("");
+    setToolFilter(tool || DEFAULT_SKILL_TOOL);
+    setSourceFilter(ALL_SKILL_FILTER);
+  }
 
   return (
     <PageShell className="max-w-6xl">
       <PageHeader
-        title="技能"
-        subtitle="查看当前 Claude、Codex 与本机 Agents 可用的 Skill，以及每个 Skill 适合处理什么任务。"
+        title={tool ? `${tool === "codex" ? "Codex" : "Claude Code"} · 技能` : "技能"}
+        subtitle={tool ? `查看当前 ${tool === "codex" ? "Codex" : "Claude Code"} 可用的 Skill，以及每个 Skill 适合处理什么任务。` : "查看当前 Claude、Codex 与本机 Agents 可用的 Skill，以及每个 Skill 适合处理什么任务。"}
         actions={
           <AntButton aria-label="刷新" disabled={loading} onClick={() => void loadSkills()} loading={loading}>
             刷新
@@ -258,18 +356,40 @@ export default function SkillsPage() {
         }
       />
 
-      <div className="mb-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜索 skill、用途、来源"
-        />
-        <div className="flex items-center gap-2 text-sm text-text-muted">
-          {loading && <Spin size="small" />}
-          <span>
-            共 {result.skills.length} 个 Skill
-            {query ? `，匹配 ${filteredSkills.length} 个` : ""}
-          </span>
+      <div className="mb-5 space-y-3">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+          <Input
+            allowClear
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="搜索 skill、用途、来源"
+          />
+          <Select
+            aria-label="来源筛选"
+            options={sourceOptions}
+            value={sourceFilter}
+            onChange={setSourceFilter}
+          />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {!tool && <Segmented
+            aria-label="工具分类"
+            options={SKILL_TOOL_OPTIONS}
+            value={toolFilter}
+            onChange={(value) => setToolFilter(String(value))}
+          />}
+          <div className="flex items-center gap-2 text-sm text-text-muted">
+            {loading && <Spin size="small" />}
+            <span>
+              共 {result.skills.length} 个 Skill
+              {hasActiveFilters ? `，匹配 ${filteredSkills.length} 个` : ""}
+            </span>
+            {hasActiveFilters && (
+              <AntButton type="link" size="small" onClick={clearFilters}>
+                清除筛选
+              </AntButton>
+            )}
+          </div>
         </div>
       </div>
 
@@ -308,11 +428,11 @@ export default function SkillsPage() {
           <div className="rounded-lg border border-dashed border-border py-8">
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={query ? "没有匹配的 Skill" : "未发现可用 Skill"}
+              description={hasActiveFilters ? "没有匹配的 Skill" : "未发现可用 Skill"}
             />
           </div>
         ) : (
-          <SkillTable skills={filteredSkills} vscodePath={vscodePath} />
+          <SkillTable skills={filteredSkills} vscodePath={vscodePath} pageSize={pageSize} />
         )}
       </div>
     </PageShell>

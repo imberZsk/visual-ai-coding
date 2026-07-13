@@ -97,13 +97,37 @@ export interface NavItem {
   label: string;
 }
 
-// 主导航页签
-export const NAV_ITEMS: NavItem[] = [
-  { id: "claude", label: "Claude Code" },
-  { id: "codex", label: "Codex" },
-  { id: "hooks", label: "Hooks" },
-  { id: "mcp", label: "MCP" },
-  { id: "agents", label: "Agents" },
-  { id: "plugins", label: "插件" },
-  { id: "skills", label: "技能" },
+// ToolNavGroup 描述侧边栏中的一级工具及其二级能力入口。
+export interface ToolNavGroup {
+  id: "codex" | "claude"; // id 存储工具作用域，用于生成对应能力页路由。
+  label: string; // label 存储一级导航展示名称。
+  children: NavItem[]; // children 存储该工具下可进入的二级页面。
+}
+
+// TOOL_NAV_GROUPS 存储按工具归类的层级导航，避免跨工具能力平铺混合。
+export const TOOL_NAV_GROUPS: ToolNavGroup[] = [
+  {
+    id: "codex",
+    label: "Codex",
+    children: [
+      { id: "codex", label: "配置" },
+      { id: "codex-mcp", label: "MCP" },
+      { id: "codex-hooks", label: "Hooks" },
+      { id: "codex-agents", label: "Agents" },
+      { id: "codex-plugins", label: "插件" },
+      { id: "codex-skills", label: "技能" },
+    ],
+  },
+  {
+    id: "claude",
+    label: "Claude Code",
+    children: [
+      { id: "claude", label: "配置" },
+      { id: "claude-mcp", label: "MCP" },
+      { id: "claude-hooks", label: "Hooks" },
+      { id: "claude-agents", label: "Agents" },
+      { id: "claude-plugins", label: "插件" },
+      { id: "claude-skills", label: "技能" },
+    ],
+  },
 ];

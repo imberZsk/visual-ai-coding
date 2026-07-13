@@ -6,6 +6,11 @@ import CapabilityConfigEditor from "../components/CapabilityConfigEditor";
 import ConfigEditor from "../components/ConfigEditor";
 import { PageHeader, PageShell } from "../components/ui";
 
+// HooksPageProps 描述 Hooks 页面当前所属的一级工具。
+interface HooksPageProps {
+  tool?: "claude" | "codex"; // tool 存储需要展示 Hooks 配置的工具作用域，省略时保留汇总视图兼容性。
+}
+
 // CLAUDE_HOOK_FIELD_PATHS 存储 Claude settings 中与 Hooks 能力相关的字段路径。
 const CLAUDE_HOOK_FIELD_PATHS = [
   "hooks",
@@ -32,7 +37,7 @@ function findConfigSpec(files: typeof CLAUDE_CONFIG_FILES, id: string) {
 }
 
 // HooksPage 渲染 Hooks 跨工具能力页。
-export default function HooksPage() {
+export default function HooksPage({ tool }: HooksPageProps) {
   // claudeSettingsSpec 存储 Claude settings.json 的配置文件描述。
   const claudeSettingsSpec = findConfigSpec(CLAUDE_CONFIG_FILES, "claude-settings");
   // codexConfigSpec 存储 Codex config.toml 的配置文件描述。
@@ -43,25 +48,25 @@ export default function HooksPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Hooks"
-        subtitle="集中管理 Claude 与 Codex 的生命周期 Hook 配置"
+        title={tool ? `${tool === "codex" ? "Codex" : "Claude Code"} · Hooks` : "Hooks"}
+        subtitle={tool ? `管理 ${tool === "codex" ? "Codex" : "Claude Code"} 的生命周期 Hook 配置` : "集中管理 Claude 与 Codex 的生命周期 Hook 配置"}
       />
       <div className="space-y-4">
-        <CapabilityConfigEditor
+        {tool !== "codex" && <CapabilityConfigEditor
           description="Claude settings.json 中的 Hooks、禁用开关和托管 Hook allowlist。"
           fieldPaths={CLAUDE_HOOK_FIELD_PATHS}
           schema={CLAUDE_SETTINGS_SCHEMA}
           spec={claudeSettingsSpec}
           title="Claude Hooks"
-        />
-        <CapabilityConfigEditor
+        />}
+        {tool !== "claude" && <CapabilityConfigEditor
           description="Codex config.toml 中的生命周期 hooks 配置。"
           fieldPaths={CODEX_HOOK_FIELD_PATHS}
           schema={CODEX_CONFIG_SCHEMA}
           spec={codexConfigSpec}
           title="Codex Hooks"
-        />
-        <ConfigEditor spec={codexHooksSpec} />
+        />}
+        {tool !== "claude" && <ConfigEditor spec={codexHooksSpec} />}
       </div>
     </PageShell>
   );

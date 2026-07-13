@@ -99,10 +99,12 @@ describe("App tab loading", () => {
     const rendered = render(<App />);
     rerenderApp = () => rendered.rerender(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "插件" }));
+    // codexPluginItem 存储 Codex 一级分组下的插件二级入口。
+    const codexPluginItem = screen.getAllByRole("menuitem", { name: "插件" })[0];
+    fireEvent.click(codexPluginItem);
 
-    // 切到“插件”后该导航项应处于当前页语义态，高亮由侧边栏按钮 class 维护。
-    expect(screen.getByRole("button", { name: "插件" })).toHaveAttribute("aria-current", "page");
+    // 切到“插件”后该导航项应处于 Ant Design Menu 选中态。
+    expect(codexPluginItem).toHaveClass("ant-menu-item-selected");
 
     expect(screen.queryByText("页面加载中…")).not.toBeInTheDocument();
     expect(screen.queryByTestId("tab-loading-indicator")).not.toBeInTheDocument();
@@ -119,7 +121,12 @@ describe("App tab loading", () => {
     expect(screen.getByRole("navigation", { name: "主导航" })).toBeInTheDocument();
     expect(rendered.container.querySelector("aside")).toBeInTheDocument();
     expect(screen.queryByRole("banner")).not.toBeInTheDocument();
-    expect(screen.getByTestId("app-sidebar")).toHaveClass("w-60");
+    expect(screen.getByTestId("app-sidebar")).toHaveClass("w-64");
+    expect(screen.getByTestId("app-sidebar")).not.toHaveClass("border-r");
+    // menu 存储 Ant Design 导航根节点，用于锁定其默认右边框已被移除。
+    const menu = rendered.container.querySelector(".sidebar-menu");
+    expect(menu).toBeInTheDocument();
+    expect(menu).toHaveStyle({ borderInlineEnd: 0 });
     expect(screen.getByTestId("app-shell")).toHaveClass("flex-row");
   });
 
@@ -132,10 +139,10 @@ describe("App tab loading", () => {
     expect(screen.getByText("概览页面")).toBeInTheDocument();
     // overviewButton 存储左侧导航中的概览入口，用于确认当前页语义态。
     const overviewButton = within(screen.getByRole("navigation", { name: "主导航" })).getByRole(
-      "button",
+      "menuitem",
       { name: "概览" }
     );
-    expect(overviewButton).toHaveAttribute("aria-current", "page");
+    expect(overviewButton).toHaveClass("ant-menu-item-selected");
   });
 
   // 验证设置入口不混入主导航，而是保留为左侧栏底部操作。
@@ -146,30 +153,43 @@ describe("App tab loading", () => {
 
     // nav 存储主导航区域，避免页面内容或工具区操作影响导航断言。
     const nav = screen.getByRole("navigation", { name: "主导航" });
-    expect(within(nav).getByRole("button", { name: "概览" })).toBeInTheDocument();
+    expect(within(nav).getByRole("menuitem", { name: "概览" })).toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "设置" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "设置" })).toBeInTheDocument();
   });
 
-  // 验证 Hooks、MCP、Agents 作为跨工具能力入口出现在主导航，并能切换到对应页面。
-  it("renders Hooks MCP and Agents as main sidebar entries", async () => {
+  // 验证 Codex 与 Claude Code 作为一级入口，并以手风琴方式只展开一个工具分组。
+  it("renders tool groups as an accordion with scoped capability entries", async () => {
     // rendered 存储 App 渲染结果，供 mock store 在页签切换时触发重渲染。
     const rendered = render(<App />);
     rerenderApp = () => rendered.rerender(<App />);
 
     // nav 存储主导航区域，用于限定按钮查询范围。
     const nav = screen.getByRole("navigation", { name: "主导航" });
-    expect(within(nav).getByRole("button", { name: "Hooks" })).toBeInTheDocument();
-    expect(within(nav).getByRole("button", { name: "MCP" })).toBeInTheDocument();
-    expect(within(nav).getByRole("button", { name: "Agents" })).toBeInTheDocument();
+    // codexGroup 存储默认展开的 Codex 一级菜单。
+    const codexGroup = within(nav).getByRole("menuitem", { name: "Codex" });
+    // claudeGroup 存储默认收起的 Claude Code 一级菜单。
+    const claudeGroup = within(nav).getByRole("menuitem", { name: "Claude Code" });
+    expect(codexGroup).toHaveAttribute("aria-expanded", "true");
+    expect(claudeGroup).toHaveAttribute("aria-expanded", "false");
 
-    fireEvent.click(within(nav).getByRole("button", { name: "Hooks" }));
+    fireEvent.click(within(nav).getByRole("menuitem", { name: "Hooks" }));
     expect(screen.getByText("Hooks 页面")).toBeInTheDocument();
 
-    fireEvent.click(within(nav).getByRole("button", { name: "MCP" }));
+    fireEvent.click(claudeGroup);
+    expect(codexGroup).toHaveAttribute("aria-expanded", "false");
+    expect(claudeGroup).toHaveAttribute("aria-expanded", "true");
+
+    // claudeMcpItem 存储 Claude Code 分组下具有稳定路由 key 的 MCP 入口。
+    const claudeMcpItem = nav.querySelector('[data-menu-id$="-claude-mcp"]');
+    expect(claudeMcpItem).toBeInTheDocument();
+    fireEvent.click(claudeMcpItem as HTMLElement);
     expect(screen.getByText("MCP 页面")).toBeInTheDocument();
 
-    fireEvent.click(within(nav).getByRole("button", { name: "Agents" }));
+    // claudeAgentsItem 存储 Claude Code 分组下具有稳定路由 key 的 Agents 入口。
+    const claudeAgentsItem = nav.querySelector('[data-menu-id$="-claude-agents"]');
+    expect(claudeAgentsItem).toBeInTheDocument();
+    fireEvent.click(claudeAgentsItem as HTMLElement);
     expect(screen.getByText("Agents 页面")).toBeInTheDocument();
   });
 

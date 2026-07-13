@@ -2,6 +2,43 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 侧边层级导航使用主题语义色，一级工具与二级能力通过缩进和字号形成清晰层次。 */
+.sidebar-menu.ant-menu {
+  border-inline-end: 0 !important;
+  background: transparent;
+  color: rgb(var(--text-muted));
+}
+
+.sidebar-menu.ant-menu-inline .ant-menu-sub.ant-menu-inline {
+  background: transparent;
+}
+
+.sidebar-menu .ant-menu-item,
+.sidebar-menu .ant-menu-submenu-title {
+  width: 100%;
+  margin-inline: 0;
+  border-radius: 6px;
+}
+
+.sidebar-menu .ant-menu-submenu-title {
+  color: rgb(var(--text-main));
+  font-weight: 600;
+}
+
+.sidebar-menu .ant-menu-sub .ant-menu-item {
+  font-size: 13px;
+}
+
+.sidebar-menu .ant-menu-item-selected {
+  background: rgb(var(--panel-soft));
+  color: rgb(var(--text-main));
+  font-weight: 600;
+}
+
+.sidebar-menu .ant-menu-item-selected::after {
+  display: none;
+}
+
 /* 主题语义色变量：light 为默认，.dark 覆盖为暗色 */
 :root {
   --surface: 246 246 244; /* 应用主背景，存储浅色模式下的纸白石墨底色 */

@@ -34,4 +34,13 @@ describe("McpPage", () => {
     expect(screen.getByText(/mcp_servers/)).toBeInTheDocument();
     expect(screen.getByText(/mcp_oauth_credentials_store/)).toBeInTheDocument();
   });
+
+  // 验证从一级工具导航进入时只展示该工具的 MCP 配置，避免跨工具内容混合。
+  it("renders only the selected tool scope", () => {
+    render(<McpPage tool="codex" />);
+
+    expect(screen.getByRole("heading", { name: "Codex · MCP" })).toBeInTheDocument();
+    expect(screen.getByText("Codex MCP")).toBeInTheDocument();
+    expect(screen.queryByText("Claude MCP")).not.toBeInTheDocument();
+  });
 });

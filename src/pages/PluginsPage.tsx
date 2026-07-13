@@ -17,15 +17,29 @@ interface ToolSectionState {
   error: string; // error 存储该工具检查失败的原因文本。
 }
 
+// PluginCheckFeedback 描述卡片内展示的单插件检查结果。
+interface PluginCheckFeedback {
+  phase: "ok" | "warning" | "err"; // phase 存储结果语义，用于选择提示颜色。
+  text: string; // text 存储检查结果文案。
+}
+
 // PluginToolSectionProps 定义单个工具插件区块需要的渲染参数。
 interface PluginToolSectionProps {
   title: string; // title 存储工具区块标题。
   state: ToolSectionState; // state 存储工具区块的加载、结果与错误状态。
   onRefresh: () => void; // onRefresh 用于重新检查当前工具插件状态。
+  onCheckPlugin: (plugin: ToolPluginInfo) => void; // onCheckPlugin 用于只读检查单个插件是否有新版本。
   onUpdate: (plugin: ToolPluginInfo) => void; // onUpdate 用于触发单个插件更新。
   onToggleEnabled: (plugin: ToolPluginInfo, enabled: boolean) => void; // onToggleEnabled 用于启用或禁用单个插件。
   isPluginUpdating: (plugin: ToolPluginInfo) => boolean; // isPluginUpdating 判断指定插件按钮是否进入 loading。
+  isPluginChecking: (plugin: ToolPluginInfo) => boolean; // isPluginChecking 判断指定插件检查按钮是否进入 loading。
+  getPluginCheckResult: (plugin: ToolPluginInfo) => PluginCheckFeedback | undefined; // getPluginCheckResult 获取指定插件最近一次检查结果。
   isPluginToggling: (plugin: ToolPluginInfo) => boolean; // isPluginToggling 判断指定插件开关是否进入 loading。
+}
+
+// PluginsPageProps 描述插件页当前所属的一级工具。
+interface PluginsPageProps {
+  tool?: "claude" | "codex"; // tool 存储需要展示和检查插件的工具作用域，省略时保留汇总视图兼容性。
 }
 
 // INITIAL_PLUGIN_CHECK_DELAY_MS 存储插件页首次检查延迟时间，用于先让 tab 切换动画完成再启动 CLI 检查。
@@ -112,9 +126,12 @@ function PluginToolSection({
   title,
   state,
   onRefresh,
+  onCheckPlugin,
   onUpdate,
   onToggleEnabled,
   isPluginUpdating,
+  isPluginChecking,
+  getPluginCheckResult,
   isPluginToggling,
 }: PluginToolSectionProps) {
   return (
@@ -168,6 +185,8 @@ function PluginToolSection({
               const lastUpdatedText = formatPluginLastUpdated(plugin.last_updated);
               // toggling 存储当前插件是否正在执行启停操作。
               const toggling = isPluginToggling(plugin);
+              // checkResult 存储当前插件最近一次明确的版本检查结果。
+              const checkResult = getPluginCheckResult(plugin);
 
             return (
               <Card
@@ -216,6 +235,13 @@ function PluginToolSection({
                       Finder
                     </Button>
                     <Button
+                      onClick={() => onCheckPlugin(plugin)}
+                      variant="default"
+                      loading={isPluginChecking(plugin)}
+                    >
+                      检查更新
+                    </Button>
+                    <Button
                       onClick={() => onUpdate(plugin)}
                       variant="primary"
                       disabled={plugin.update_status === "same"}
@@ -225,6 +251,20 @@ function PluginToolSection({
                     </Button>
                   </div>
                 </div>
+                {checkResult && (
+                  <Alert
+                    className="mt-3"
+                    message={checkResult.text}
+                    showIcon
+                    type={
+                      checkResult.phase === "err"
+                        ? "error"
+                        : checkResult.phase === "ok"
+                        ? "success"
+                        : "warning"
+                    }
+                  />
+                )}
               </Card>
             );
           })}
@@ -236,7 +276,7 @@ function PluginToolSection({
 }
 
 // 插件管理页组件
-export default function PluginsPage() {
+export default function PluginsPage({ tool }: PluginsPageProps) {
   // claudeHome 存储 Claude 配置根目录。
   const claudeHome = useAppStore((state) => state.prefs?.claude_home || "");
   // codexHome 存储 Codex 配置根目录。
@@ -247,6 +287,8 @@ export default function PluginsPage() {
   const checkPluginUpdates = useAppStore((state) => state.checkPluginUpdates);
   // checkAllPluginUpdates 存储并行检查全部工具插件更新的 store action。
   const checkAllPluginUpdates = useAppStore((state) => state.checkAllPluginUpdates);
+  // checkSinglePluginUpdate 存储只读检查指定插件版本的 store action。
+  const checkSinglePluginUpdate = useAppStore((state) => state.checkSinglePluginUpdate);
   // updatePlugin 存储更新指定工具插件的 store action。
   const updatePlugin = useAppStore((state) => state.updatePlugin);
   // setPluginEnabled 存储启用或禁用指定工具插件的 store action。
@@ -255,28 +297,36 @@ export default function PluginsPage() {
   useEffect(() => {
     // timer 存储首轮插件检查的延迟句柄，避免切到插件 tab 时同步启动 CLI 检查造成卡顿。
     const timer = window.setTimeout(() => {
-      void checkAllPluginUpdates();
+      if (tool) {
+        void checkPluginUpdates(tool);
+      } else {
+        void checkAllPluginUpdates();
+      }
     }, INITIAL_PLUGIN_CHECK_DELAY_MS);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [checkAllPluginUpdates, claudeHome, codexHome]);
+  }, [checkAllPluginUpdates, checkPluginUpdates, claudeHome, codexHome, tool]);
 
   return (
     <PageShell>
       <PageHeader
-        title="插件"
-        subtitle="管理 Claude Code 与 Codex 插件，检查可用版本并拉取更新"
+        title={tool ? `${tool === "codex" ? "Codex" : "Claude Code"} · 插件` : "插件"}
+        subtitle={tool ? `管理 ${tool === "codex" ? "Codex" : "Claude Code"} 插件，检查可用版本并拉取更新` : "管理 Claude Code 与 Codex 插件，检查可用版本并拉取更新"}
         actions={
           <Button
             onClick={() => {
-              void checkAllPluginUpdates();
+              if (tool) {
+                void checkPluginUpdates(tool);
+              } else {
+                void checkAllPluginUpdates();
+              }
             }}
             variant="default"
-            loading={pluginPage.refreshingAll}
+            loading={tool ? pluginPage[tool].loading : pluginPage.refreshingAll}
           >
-            刷新全部
+            {tool ? "检查更新" : "检查全部更新"}
           </Button>
         }
       />
@@ -337,7 +387,7 @@ export default function PluginsPage() {
         />
       )}
 
-      <PluginToolSection
+      {tool !== "codex" && <PluginToolSection
         title="Claude 插件"
         state={pluginPage.claude}
         onRefresh={() => {
@@ -346,17 +396,26 @@ export default function PluginsPage() {
         onUpdate={(plugin) => {
           void updatePlugin("claude", plugin);
         }}
+        onCheckPlugin={(plugin) => {
+          void checkSinglePluginUpdate("claude", plugin);
+        }}
         onToggleEnabled={(plugin, enabled) => {
           void setPluginEnabled("claude", plugin, enabled);
         }}
         isPluginUpdating={(plugin) => {
           return Boolean(pluginPage.updating[pluginUpdateKey("claude", plugin)]);
         }}
+        isPluginChecking={(plugin) => {
+          return Boolean(pluginPage.checkingPlugins[pluginUpdateKey("claude", plugin)]);
+        }}
+        getPluginCheckResult={(plugin) => {
+          return pluginPage.pluginCheckResults[pluginUpdateKey("claude", plugin)];
+        }}
         isPluginToggling={(plugin) => {
           return Boolean(pluginPage.toggling[pluginUpdateKey("claude", plugin)]);
         }}
-      />
-      <PluginToolSection
+      />}
+      {tool !== "claude" && <PluginToolSection
         title="Codex 插件"
         state={pluginPage.codex}
         onRefresh={() => {
@@ -365,16 +424,25 @@ export default function PluginsPage() {
         onUpdate={(plugin) => {
           void updatePlugin("codex", plugin);
         }}
+        onCheckPlugin={(plugin) => {
+          void checkSinglePluginUpdate("codex", plugin);
+        }}
         onToggleEnabled={(plugin, enabled) => {
           void setPluginEnabled("codex", plugin, enabled);
         }}
         isPluginUpdating={(plugin) => {
           return Boolean(pluginPage.updating[pluginUpdateKey("codex", plugin)]);
         }}
+        isPluginChecking={(plugin) => {
+          return Boolean(pluginPage.checkingPlugins[pluginUpdateKey("codex", plugin)]);
+        }}
+        getPluginCheckResult={(plugin) => {
+          return pluginPage.pluginCheckResults[pluginUpdateKey("codex", plugin)];
+        }}
         isPluginToggling={(plugin) => {
           return Boolean(pluginPage.toggling[pluginUpdateKey("codex", plugin)]);
         }}
-      />
+      />}
     </PageShell>
   );
 }

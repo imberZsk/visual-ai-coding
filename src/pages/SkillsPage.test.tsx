@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SkillsPage from "./SkillsPage";
@@ -19,6 +19,8 @@ vi.mock("../store", () => ({
 
 describe("SkillsPage", () => {
   beforeEach(() => {
+    // innerHeight 模拟常见桌面窗口高度，使响应式分页初始为每页 5 条。
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 800 });
     window.api = {
       listSkills: (payload: { claudeHome: string; codexHome: string }) =>
         invokeMock("list_skills", payload),
@@ -44,9 +46,32 @@ describe("SkillsPage", () => {
           plugin: "superpowers@superpowers-dev",
           path: "/Users/test/.codex/plugins/cache/superpowers-dev/superpowers/6.0.3/skills/brainstorming/SKILL.md",
         },
+        {
+          name: "document-review",
+          description: "Reviews documents and proposes edits.",
+          source: "Claude 用户",
+          tool: "claude",
+          plugin: "",
+          path: "/Users/test/.claude/skills/document-review/SKILL.md",
+        },
       ],
       diagnostics: "",
     });
+  });
+
+  // 验证技能页默认展示 Codex 分类，且“全部”分类排列在最后。
+  it("defaults to Codex and puts the all category last", async () => {
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+    expect(screen.queryByText("document-review")).not.toBeInTheDocument();
+
+    // categoryLabels 存储分段控件从左到右的分类标签。
+    const categoryLabels = Array.from(document.querySelectorAll(".ant-segmented-item-label"))
+      .map((element) => element.textContent);
+    expect(categoryLabels).toEqual(["Codex", "Claude", "Agents", "全部"]);
+    expect(screen.getByText("Codex", { selector: ".ant-segmented-item-selected .ant-segmented-item-label" }))
+      .toBeInTheDocument();
   });
 
   // 验证技能页会展示可用 skill 的用途、来源、插件归属与本地路径，帮助用户理解当前可用能力。
@@ -173,6 +198,79 @@ describe("SkillsPage", () => {
     await waitFor(() => {
       expect(screen.queryByText("openai-docs")).not.toBeInTheDocument();
       expect(screen.getByText("brainstorming")).toBeInTheDocument();
+    });
+  });
+
+  // 验证工具分类可与搜索条件组合筛选，并可一键恢复完整清单。
+  it("filters skills by tool category and clears active filters", async () => {
+    // user 存储用户交互模拟器，用于切换分类并清除筛选。
+    const user = userEvent.setup();
+
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+
+    await user.click(screen.getByText("Claude", { selector: ".ant-segmented-item-label" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("document-review")).toBeInTheDocument();
+      expect(screen.queryByText("openai-docs")).not.toBeInTheDocument();
+      expect(screen.getByText("共 3 个 Skill，匹配 1 个")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "清除筛选" }));
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+    expect(screen.getByText("brainstorming")).toBeInTheDocument();
+    expect(screen.queryByText("document-review")).not.toBeInTheDocument();
+  });
+
+  // 验证来源下拉框按扫描结果动态分类，并能精确筛选系统技能。
+  it("filters skills by dynamic source category", async () => {
+    // user 存储用户交互模拟器，用于操作来源下拉框。
+    const user = userEvent.setup();
+
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "来源筛选" }));
+    await user.click(await screen.findByText("Codex 系统", { selector: ".ant-select-item-option-content" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("openai-docs")).toBeInTheDocument();
+      expect(screen.queryByText("brainstorming")).not.toBeInTheDocument();
+      expect(screen.queryByText("document-review")).not.toBeInTheDocument();
+    });
+  });
+
+  // 验证 Ant Design Table 根据窗口高度调整分页条数，并在缩放后展示更多技能。
+  it("uses responsive Ant Design table pagination", async () => {
+    // responsiveSkills 存储用于触发多页展示的 Codex 技能测试数据。
+    const responsiveSkills = Array.from({ length: 8 }, (_value, index) => ({
+      name: `codex-skill-${index + 1}`,
+      description: `Codex skill ${index + 1}`,
+      source: "Codex 用户",
+      tool: "codex",
+      plugin: "",
+      path: `/Users/test/.codex/skills/codex-skill-${index + 1}/SKILL.md`,
+    }));
+    invokeMock.mockResolvedValue({ skills: responsiveSkills, diagnostics: "" });
+
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("codex-skill-1")).toBeInTheDocument();
+    expect(screen.getByText("codex-skill-5")).toBeInTheDocument();
+    expect(screen.queryByText("codex-skill-6")).not.toBeInTheDocument();
+    expect(document.querySelector(".ant-pagination")).toBeInTheDocument();
+
+    act(() => {
+      window.innerHeight = 1200;
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("codex-skill-8")).toBeInTheDocument();
+      expect(document.querySelector(".ant-pagination")).not.toBeInTheDocument();
     });
   });
 });

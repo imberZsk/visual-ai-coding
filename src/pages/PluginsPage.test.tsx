@@ -40,6 +40,8 @@ function createEmptyPluginPageState() {
     update: null,
     toggle: null,
     checking: {},
+    checkingPlugins: {},
+    pluginCheckResults: {},
     updating: {},
     toggling: {},
   };
@@ -422,7 +424,7 @@ describe("PluginsPage", () => {
     }
   });
 
-  // 验证点击顶部“刷新全部”后，按钮会展示 loading 并在两类工具检查结束后恢复。
+  // 验证点击顶部“检查全部更新”后，按钮会展示 loading 并在两类工具检查结束后恢复。
   it("shows loading on refresh all until both plugin checks finish", async () => {
     // user 存储用户交互模拟器，用于点击刷新按钮。
     const user = userEvent.setup();
@@ -446,10 +448,10 @@ describe("PluginsPage", () => {
       return Promise.resolve([]);
     });
 
-    await user.click(screen.getByRole("button", { name: "刷新全部" }));
+    await user.click(screen.getByRole("button", { name: "检查全部更新" }));
 
     // refreshingButton 存储进入 loading 状态后的刷新按钮，文案保持稳定，loading 用图标表达。
-    const refreshingButton = screen.getByRole("button", { name: "刷新全部" });
+    const refreshingButton = screen.getByRole("button", { name: "检查全部更新" });
     expect(refreshingButton).toBeDisabled();
     expect(within(refreshingButton).getByTestId("loading-icon")).toBeInTheDocument();
 
@@ -467,7 +469,7 @@ describe("PluginsPage", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "刷新全部" })).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: "检查全部更新" })).not.toBeDisabled();
     });
   });
 
@@ -502,14 +504,14 @@ describe("PluginsPage", () => {
     const claudeSection = screen.getByText("Claude 插件").closest("section");
     expect(claudeSection).not.toBeNull();
 
-    await user.click(
-      within(claudeSection as HTMLElement).getByRole("button", { name: "检查更新" })
-    );
+    // sectionCheckButton 存储区块标题旁的工具级检查按钮，排除插件卡片内的同名按钮。
+    const sectionCheckButton = within(claudeSection as HTMLElement).getAllByRole("button", {
+      name: "检查更新",
+    })[0];
+    await user.click(sectionCheckButton);
 
     // checkingButton 存储进入 loading 状态的 Claude 检查按钮。
-    const checkingButton = within(claudeSection as HTMLElement).getByRole("button", {
-      name: "检查更新",
-    });
+    const checkingButton = sectionCheckButton;
     expect(checkingButton).toBeDisabled();
     expect(within(checkingButton).getByTestId("loading-icon")).toBeInTheDocument();
     expect(screen.getByText("superpowers@superpowers-dev")).toBeInTheDocument();
@@ -525,6 +527,64 @@ describe("PluginsPage", () => {
     await waitFor(() => {
       expect(checkingButton).not.toBeDisabled();
     });
+  });
+
+  // 验证卡片级“检查更新”只查询版本，并且只让当前插件按钮进入 loading。
+  it("checks one plugin without invoking the update command", async () => {
+    // user 存储用户交互模拟器，用于点击卡片内的检查按钮。
+    const user = userEvent.setup();
+
+    render(<PluginsPage />);
+
+    expect(await screen.findByText("superpowers@superpowers-dev")).toBeInTheDocument();
+
+    // checkDeferred 存储单插件只读检查 Promise，用于保持按钮 loading 中间态。
+    const checkDeferred = createDeferred<unknown>();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "check_claude_plugin_updates") {
+        return checkDeferred.promise;
+      }
+      return Promise.resolve([]);
+    });
+
+    // pluginCard 存储目标插件卡片，用于区分区块级与卡片级同名按钮。
+    const pluginCard = getPluginCard("superpowers@superpowers-dev");
+    // checkButton 存储目标插件卡片内的只读检查按钮。
+    const checkButton = within(pluginCard).getByRole("button", { name: "检查更新" });
+    // updateButton 存储目标插件卡片内的真实更新按钮。
+    const updateButton = within(pluginCard).getByRole("button", { name: "拉取更新" });
+
+    await user.click(checkButton);
+
+    expect(checkButton).toBeDisabled();
+    expect(within(checkButton).getByTestId("loading-icon")).toBeInTheDocument();
+    expect(updateButton).not.toBeDisabled();
+    expect(invokeMock).not.toHaveBeenCalledWith("update_claude_plugin", expect.anything());
+
+    checkDeferred.resolve({
+      tool: "claude",
+      raw_output: "{}",
+      diagnostics: "",
+      plugins: [
+        {
+          id: "superpowers@superpowers-dev",
+          name: "superpowers",
+          marketplace: "superpowers-dev",
+          current_version: "6.0.3",
+          available_version: "6.0.4",
+          scope: "user",
+          enabled: true,
+          install_path: "/tmp/superpowers",
+          last_updated: "",
+          update_status: "newer",
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(Object.keys(useAppStore.getState().pluginPage.checkingPlugins)).toHaveLength(0);
+    });
+    expect(await screen.findByText("发现新版本 6.0.4")).toBeInTheDocument();
   });
 
   // 验证单个插件更新时只有该插件按钮进入 loading，其他插件按钮仍保持可操作。
@@ -664,11 +724,14 @@ describe("PluginsPage", () => {
     const firstClaudeSection = screen.getByText("Claude 插件").closest("section");
     expect(firstClaudeSection).not.toBeNull();
 
-    await user.click(
-      within(firstClaudeSection as HTMLElement).getByRole("button", { name: "检查更新" })
-    );
+    // firstSectionCheckButton 存储首次挂载时区块标题旁的工具级检查按钮。
+    const firstSectionCheckButton = within(firstClaudeSection as HTMLElement).getAllByRole(
+      "button",
+      { name: "检查更新" }
+    )[0];
+    await user.click(firstSectionCheckButton);
     expect(
-      within(firstClaudeSection as HTMLElement).getByRole("button", { name: "检查更新" })
+      firstSectionCheckButton
     ).toBeDisabled();
 
     firstRenderResult.unmount();
@@ -678,11 +741,11 @@ describe("PluginsPage", () => {
     // remountedClaudeSection 存储重新挂载后的 Claude 区块。
     const remountedClaudeSection = screen.getByText("Claude 插件").closest("section");
     expect(remountedClaudeSection).not.toBeNull();
-    expect(
-      within(remountedClaudeSection as HTMLElement).getByRole("button", {
-        name: "检查更新",
-      })
-    ).toBeDisabled();
+    // remountedSectionCheckButton 存储重新挂载后区块标题旁的工具级检查按钮。
+    const remountedSectionCheckButton = within(
+      remountedClaudeSection as HTMLElement
+    ).getAllByRole("button", { name: "检查更新" })[0];
+    expect(remountedSectionCheckButton).toBeDisabled();
 
     await act(async () => {
       claudeDeferred.resolve({
@@ -708,11 +771,7 @@ describe("PluginsPage", () => {
     });
 
     expect(await screen.findByText("persistent@superpowers-dev")).toBeInTheDocument();
-    expect(
-      within(remountedClaudeSection as HTMLElement).getByRole("button", {
-        name: "检查更新",
-      })
-    ).not.toBeDisabled();
+    expect(remountedSectionCheckButton).not.toBeDisabled();
   });
 
   // 验证 Codex 检查失败时，Claude 区块仍然可以独立展示，避免单工具失败阻断整页。

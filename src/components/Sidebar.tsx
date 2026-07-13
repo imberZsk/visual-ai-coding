@@ -1,11 +1,10 @@
-// 左侧控制台导航栏：承载主模块切换、主题快捷切换与设置抽屉入口
+// 左侧控制台导航栏：使用 Ant Design 层级菜单承载工具与各自能力入口。
 import {
   ApiOutlined,
   AppstoreOutlined,
   CodeOutlined,
   DashboardOutlined,
   DesktopOutlined,
-  ExperimentOutlined,
   FileSearchOutlined,
   MoonOutlined,
   RobotOutlined,
@@ -15,37 +14,28 @@ import {
   ToolOutlined,
 } from "@ant-design/icons";
 import { useState, type ReactNode } from "react";
-import { Button as AntButton, Drawer } from "antd";
+import { Button as AntButton, Drawer, Menu, type MenuProps } from "antd";
 import { useAppStore } from "../store";
-import { NAV_ITEMS } from "../config";
+import { TOOL_NAV_GROUPS } from "../config";
 import { SettingsContent } from "../pages/SettingsPage";
 
-// 侧边栏导航项结构：id 对应页面标识，label 为展示文案，icon 为 Ant Design 图标。
-interface SidebarNavItem {
-  id: string; // id 存储页面标识，写入偏好的 last_active_tab。
-  label: string; // label 存储导航展示名称和无障碍名称。
-  icon: ReactNode; // icon 存储当前导航项使用的 Ant Design 图标。
-}
-
-// OVERVIEW_NAV_ITEM 存储概览页入口，概览是默认页但不在配置里的工具导航列表中。
-const OVERVIEW_NAV_ITEM: SidebarNavItem = {
-  id: "dashboard",
-  label: "概览",
-  icon: <DashboardOutlined aria-hidden="true" />,
-};
-
-// NAV_ITEM_ICONS 存储各页面对应的统一线性图标。
-const NAV_ITEM_ICONS: Record<string, ReactNode> = {
-  claude: <CodeOutlined aria-hidden="true" />,
-  codex: <ThunderboltOutlined aria-hidden="true" />,
-  hooks: <ApiOutlined aria-hidden="true" />,
+// CAPABILITY_ICONS 存储二级能力对应的 Ant Design 图标。
+const CAPABILITY_ICONS: Record<string, ReactNode> = {
+  config: <SettingOutlined aria-hidden="true" />,
   mcp: <ToolOutlined aria-hidden="true" />,
+  hooks: <ApiOutlined aria-hidden="true" />,
   agents: <RobotOutlined aria-hidden="true" />,
   plugins: <AppstoreOutlined aria-hidden="true" />,
   skills: <FileSearchOutlined aria-hidden="true" />,
 };
 
-// THEME_CYCLE 存储主题模式循环顺序：light → dark → system。
+// TOOL_ICONS 存储一级工具对应的 Ant Design 图标。
+const TOOL_ICONS: Record<string, ReactNode> = {
+  codex: <ThunderboltOutlined aria-hidden="true" />,
+  claude: <CodeOutlined aria-hidden="true" />,
+};
+
+// THEME_CYCLE 存储主题模式循环顺序：light -> dark -> system。
 const THEME_CYCLE = ["light", "dark", "system"] as const;
 
 // THEME_ICON 存储当前主题模式对应的 Ant Design 图标。
@@ -62,90 +52,102 @@ const NEXT_THEME_LABEL: Record<string, string> = {
   system: "切换到浅色主题",
 };
 
-// createSidebarNavItems 将配置里的主导航转换为侧边栏导航项。
-function createSidebarNavItems(): SidebarNavItem[] {
-  // toolNavItems 存储配置导航项补齐图标后的结果。
-  const toolNavItems = NAV_ITEMS.map((item) => ({
-    id: item.id,
-    label: item.label,
-    icon: NAV_ITEM_ICONS[item.id] ?? <ExperimentOutlined aria-hidden="true" />,
+// createMenuItems 将工具导航配置转换为 Ant Design Menu 的层级数据。
+function createMenuItems(): MenuProps["items"] {
+  // toolItems 存储 Codex 与 Claude Code 的一级分组及二级能力。
+  const toolItems: NonNullable<MenuProps["items"]> = TOOL_NAV_GROUPS.map((group) => ({
+    key: `group-${group.id}`,
+    icon: TOOL_ICONS[group.id],
+    label: group.label,
+    children: group.children.map((item) => {
+      // capability 存储路由末段，用于匹配能力图标；工具本身路由对应“配置”。
+      const capability = item.id === group.id ? "config" : item.id.replace(`${group.id}-`, "");
+      return {
+        key: item.id,
+        icon: CAPABILITY_ICONS[capability],
+        label: item.label,
+      };
+    }),
   }));
 
-  return [OVERVIEW_NAV_ITEM, ...toolNavItems];
+  return [
+    {
+      key: "dashboard",
+      icon: <DashboardOutlined aria-hidden="true" />,
+      label: "概览",
+    },
+    { type: "divider" },
+    ...toolItems,
+  ];
 }
 
-// SidebarNavButtonProps 描述单个侧边栏导航按钮的渲染参数。
-interface SidebarNavButtonProps {
-  item: SidebarNavItem; // item 存储当前要渲染的导航项。
-  active: boolean; // active 标记当前导航项是否对应正在展示的页面。
-  onSelect: (id: string) => void; // onSelect 存储点击后切换页面的回调。
+// normalizeActiveTab 将旧版跨工具页签映射到 Codex 分组，确保升级后仍有明确选中态。
+function normalizeActiveTab(activeTab: string): string {
+  // legacyTabs 存储升级前可能持久化的跨工具页签名称。
+  const legacyTabs = new Set(["mcp", "hooks", "agents", "plugins", "skills"]);
+  return legacyTabs.has(activeTab) ? `codex-${activeTab}` : activeTab;
 }
 
-// SidebarNavButton 渲染单个主导航入口，使用原生 button 以精确控制选中态和焦点态。
-function SidebarNavButton({ item, active, onSelect }: SidebarNavButtonProps) {
-  // activeClassName 存储当前项选中时的强调样式。
-  const activeClassName = active
-    ? "border-text-main bg-panel-soft text-text-main shadow-sm"
-    : "border-transparent text-text-muted hover:border-border-strong hover:bg-panel-soft hover:text-text-main";
-  // buttonClassName 存储导航按钮的完整 className。
-  const buttonClassName = [
-    "group flex h-10 w-full cursor-pointer items-center gap-3 rounded-md border-l-2 px-3 text-left text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-strong max-md:justify-center max-md:px-0",
-    activeClassName,
-  ].join(" ");
-
-  return (
-    <button
-      type="button"
-      aria-current={active ? "page" : undefined}
-      className={buttonClassName}
-      onClick={() => onSelect(item.id)}
-    >
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center text-base">
-        {item.icon}
-      </span>
-      <span className="min-w-0 truncate max-md:sr-only">{item.label}</span>
-    </button>
-  );
+// activeToolGroup 根据当前页面返回应默认展开的一级工具分组。
+function activeToolGroup(activeTab: string): string {
+  return activeTab.startsWith("claude") ? "group-claude" : "group-codex";
 }
 
-// Sidebar 渲染应用左侧导航与设置抽屉。
+// Sidebar 渲染应用左侧层级导航与设置抽屉。
 export default function Sidebar() {
   // settingsOpen 标记右侧设置抽屉是否展开。
   const [settingsOpen, setSettingsOpen] = useState(false);
   // activeTab 存储当前激活页签，空值回退到概览。
-  const activeTab = useAppStore((s) => s.prefs?.last_active_tab || "dashboard");
+  const activeTab = useAppStore((state) => state.prefs?.last_active_tab || "dashboard");
+  // openGroups 存储当前展开的一级工具分组，数组最多保留一个 key。
+  const [openGroups, setOpenGroups] = useState<string[]>([activeToolGroup(activeTab)]);
   // theme 存储当前主题模式，默认深色。
-  const theme = useAppStore((s) => s.prefs?.theme || "dark");
+  const theme = useAppStore((state) => state.prefs?.theme || "dark");
   // updatePrefs 存储切换页面与主题时使用的偏好更新方法。
-  const updatePrefs = useAppStore((s) => s.updatePrefs);
-  // navItems 存储当前侧边栏主导航项。
-  const navItems = createSidebarNavItems();
+  const updatePrefs = useAppStore((state) => state.updatePrefs);
+  // menuItems 存储 Ant Design Menu 使用的完整层级导航数据。
+  const menuItems = createMenuItems();
+  // selectedTab 存储兼容历史偏好后的当前二级菜单 key。
+  const selectedTab = normalizeActiveTab(activeTab);
 
   // goTab 切换到指定页面。
-  const goTab = (id: string) => updatePrefs({ last_active_tab: id });
+  function goTab(info: { key: string }) {
+    void updatePrefs({ last_active_tab: info.key });
+  }
+
+  // changeOpenGroups 以手风琴方式切换一级工具分组，新分组展开时自动关闭旧分组。
+  function changeOpenGroups(nextOpenGroups: string[]) {
+    // newlyOpenedGroup 存储本次新展开的分组；点击已展开分组时为空，表示收起全部。
+    const newlyOpenedGroup = nextOpenGroups.find((group) => !openGroups.includes(group));
+    setOpenGroups(newlyOpenedGroup ? [newlyOpenedGroup] : []);
+  }
 
   // openSettings 打开设置抽屉。
-  const openSettings = () => setSettingsOpen(true);
+  function openSettings() {
+    setSettingsOpen(true);
+  }
 
   // closeSettings 关闭设置抽屉。
-  const closeSettings = () => setSettingsOpen(false);
+  function closeSettings() {
+    setSettingsOpen(false);
+  }
 
   // cycleTheme 循环切换主题模式。
-  const cycleTheme = () => {
-    // idx 存储当前主题在循环数组中的位置。
-    const idx = THEME_CYCLE.indexOf(theme as (typeof THEME_CYCLE)[number]);
-    // next 存储下一主题模式，当前主题异常时回退到 dark 的下一项。
-    const next = THEME_CYCLE[((idx < 0 ? 1 : idx) + 1) % THEME_CYCLE.length];
-    void updatePrefs({ theme: next });
-  };
+  function cycleTheme() {
+    // currentIndex 存储当前主题在循环数组中的位置。
+    const currentIndex = THEME_CYCLE.indexOf(theme as (typeof THEME_CYCLE)[number]);
+    // nextTheme 存储下一主题模式，当前主题异常时回退到 dark 的下一项。
+    const nextTheme = THEME_CYCLE[((currentIndex < 0 ? 1 : currentIndex) + 1) % THEME_CYCLE.length];
+    void updatePrefs({ theme: nextTheme });
+  }
 
   return (
     <>
       <aside
         data-testid="app-sidebar"
-        className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-sidebar px-3 py-4 max-md:w-16 max-md:px-2"
+        className="flex h-full w-64 shrink-0 flex-col bg-sidebar py-4 max-md:w-[4.5rem]"
       >
-        <div className="mb-5 flex h-10 items-center gap-3 px-2">
+        <div className="mb-4 flex h-10 items-center gap-3 px-4 max-md:justify-center max-md:px-0">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-panel-soft text-lg text-text-main">
             <AppstoreOutlined aria-hidden="true" />
           </span>
@@ -155,18 +157,21 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <nav aria-label="主导航" className="flex flex-1 flex-col gap-1">
-          {navItems.map((item) => (
-            <SidebarNavButton
-              key={item.id}
-              item={item}
-              active={activeTab === item.id}
-              onSelect={goTab}
-            />
-          ))}
+        <nav aria-label="主导航" className="min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <Menu
+            className="sidebar-menu"
+            inlineCollapsed={false}
+            items={menuItems}
+            mode="inline"
+            onClick={goTab}
+            onOpenChange={changeOpenGroups}
+            openKeys={openGroups}
+            selectedKeys={[selectedTab]}
+            style={{ borderInlineEnd: 0 }}
+          />
         </nav>
 
-        <div className="mt-4 grid grid-cols-[2.25rem_minmax(0,1fr)] gap-2 border-t border-border pt-4 max-md:grid-cols-1">
+        <div className="mx-3 mt-3 grid grid-cols-[2.25rem_minmax(0,1fr)] gap-2 border-t border-border pt-4 max-md:mx-2 max-md:grid-cols-1">
           <AntButton
             className="h-9 w-9"
             icon={THEME_ICON[theme] || THEME_ICON.dark}
@@ -187,13 +192,7 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      <Drawer
-        destroyOnHidden
-        open={settingsOpen}
-        title="设置"
-        width={760}
-        onClose={closeSettings}
-      >
+      <Drawer destroyOnHidden open={settingsOpen} title="设置" width={760} onClose={closeSettings}>
         <SettingsContent />
       </Drawer>
     </>

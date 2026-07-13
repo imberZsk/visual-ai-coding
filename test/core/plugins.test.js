@@ -8,6 +8,8 @@ import {
   buildCodexFallbackResult,
   buildUpdateToolArgs,
   compareVersions,
+  enrichClaudeAvailableVersions,
+  enrichCodexAvailableVersions,
   parseClaudePluginUpdateCheckOutput,
   parseCodexPluginUpdateCheckOutput,
   setCodexPluginEnabled,
@@ -53,6 +55,50 @@ describe("core plugins", () => {
     expect(result.diagnostics).toBe("warning: cached");
   });
 
+  // 验证 Claude CLI 的 available 不含已安装插件时，会从 marketplace 清单补齐最新版本。
+  it("fills installed Claude plugin versions from the marketplace manifest", () => {
+    // claudeHome 存储测试专属 Claude home。
+    const claudeHome = join(tmpdir(), `visual-aicoding-claude-${process.pid}-${Date.now()}`);
+    // marketplaceDir 存储测试 marketplace 标准清单目录。
+    const marketplaceDir = join(
+      claudeHome,
+      "plugins",
+      "marketplaces",
+      "cyt-plugins",
+      ".claude-plugin",
+    );
+    mkdirSync(marketplaceDir, { recursive: true });
+    writeFileSync(
+      join(marketplaceDir, "marketplace.json"),
+      JSON.stringify({ plugins: [{ name: "cyt-dev-enhanced", version: "2.8.1" }] }),
+    );
+
+    // result 存储模拟 CLI 缺失 available 版本的统一结果。
+    const result = enrichClaudeAvailableVersions(claudeHome, {
+      tool: "claude",
+      raw_output: "{}",
+      diagnostics: "",
+      plugins: [
+        {
+          id: "cyt-dev-enhanced@cyt-plugins",
+          name: "cyt-dev-enhanced",
+          marketplace: "cyt-plugins",
+          current_version: "2.6.0",
+          available_version: "",
+          scope: "user",
+          enabled: true,
+          install_path: "/tmp/cyt-dev-enhanced",
+          last_updated: "",
+          update_status: "unknown",
+        },
+      ],
+    });
+
+    expect(result.plugins[0].available_version).toBe("2.8.1");
+    expect(result.plugins[0].update_status).toBe("newer");
+    rmSync(claudeHome, { recursive: true, force: true });
+  });
+
   // 验证 Codex 更新检查只解析 stdout 中的 JSON，并保留 stderr 诊断。
   it("parses Codex plugin update output without mixing stderr", () => {
     // stdout 存储 Codex CLI 返回的 JSON 样例。
@@ -77,6 +123,32 @@ describe("core plugins", () => {
     expect(result.plugins[0].marketplace).toBe("openai-bundled");
     expect(result.plugins[0].update_status).toBe("newer");
     expect(result.diagnostics).toBe("warning: stale");
+  });
+
+  // 验证新版 Codex CLI 的 pluginId/marketplaceName 字段仍能被正确解析。
+  it("parses current Codex plugin field names", () => {
+    // stdout 存储新版 Codex CLI 返回的 JSON 样例。
+    const stdout = JSON.stringify({
+      installed: [
+        {
+          pluginId: "superpowers@superpowers-dev",
+          name: "superpowers",
+          marketplaceName: "superpowers-dev",
+          version: "6.0.3",
+          enabled: false,
+          source: { source: "git", url: "/tmp/superpowers-marketplace" },
+        },
+      ],
+      available: [],
+    });
+
+    // result 存储解析后的统一插件结果。
+    const result = parseCodexPluginUpdateCheckOutput(stdout, "");
+
+    expect(result.plugins[0].id).toBe("superpowers@superpowers-dev");
+    expect(result.plugins[0].marketplace).toBe("superpowers-dev");
+    expect(result.plugins[0].current_version).toBe("6.0.3");
+    expect(result.plugins[0].install_path).toBe("/tmp/superpowers-marketplace");
   });
 
   // 验证 Codex CLI 失败时可以从本地 config/cache 构造降级结果。
@@ -109,6 +181,136 @@ describe("core plugins", () => {
     expect(result.plugins[0].id).toBe("superpowers@superpowers-dev");
     expect(result.plugins[0].current_version).toBe("6.0.3");
     expect(result.plugins[0].update_status).toBe("unknown");
+    rmSync(codexHome, { recursive: true, force: true });
+  });
+
+  // 验证 Codex CLI fallback 时会沿 config.toml marketplace source 补齐 bundled 插件版本。
+  it("fills Codex bundled plugin versions from configured marketplace sources", () => {
+    // codexHome 存储测试专属 Codex home。
+    const codexHome = makeTempCodexHome();
+    // marketplaceRoot 存储模拟 bundled marketplace 根目录。
+    const marketplaceRoot = join(codexHome, "bundled-marketplace");
+    // marketplaceManifestDir 存储 Codex marketplace 清单目录。
+    const marketplaceManifestDir = join(marketplaceRoot, ".agents", "plugins");
+    // pluginManifestDir 存储 browser 插件 manifest 目录。
+    const pluginManifestDir = join(
+      marketplaceRoot,
+      "plugins",
+      "browser",
+      ".codex-plugin",
+    );
+    mkdirSync(marketplaceManifestDir, { recursive: true });
+    mkdirSync(pluginManifestDir, { recursive: true });
+    writeFileSync(
+      join(marketplaceManifestDir, "marketplace.json"),
+      JSON.stringify({
+        plugins: [{ name: "browser", source: { source: "local", path: "./plugins/browser" } }],
+      }),
+    );
+    writeFileSync(
+      join(pluginManifestDir, "plugin.json"),
+      JSON.stringify({ name: "browser", version: "26.707.51957" }),
+    );
+    writeFileSync(
+      join(codexHome, "config.toml"),
+      `[marketplaces.openai-bundled]\nsource_type = "local"\nsource = "${marketplaceRoot}"\n`,
+    );
+
+    // result 存储模拟 CLI fallback 中缺失可用版本的 browser 插件。
+    const result = enrichCodexAvailableVersions(codexHome, {
+      tool: "codex",
+      raw_output: "",
+      diagnostics: "snapshot failed",
+      plugins: [
+        {
+          id: "browser@openai-bundled",
+          name: "browser",
+          marketplace: "openai-bundled",
+          current_version: "26.707.51957",
+          available_version: "",
+          scope: "",
+          enabled: true,
+          install_path: "/tmp/browser",
+          last_updated: "",
+          update_status: "unknown",
+        },
+      ],
+    });
+
+    expect(result.plugins[0].available_version).toBe("26.707.51957");
+    expect(result.plugins[0].update_status).toBe("same");
+    rmSync(codexHome, { recursive: true, force: true });
+  });
+
+  // 验证 Git marketplace 使用 source.url 指向仓库根目录时可读取 Codex manifest 版本。
+  it("fills Codex Git marketplace versions from source url", () => {
+    // codexHome 存储测试专属 Codex home。
+    const codexHome = makeTempCodexHome();
+    // marketplaceRoot 存储 Codex Git marketplace 的标准快照目录。
+    const marketplaceRoot = join(codexHome, ".tmp", "marketplaces", "superpowers-dev");
+    // marketplaceManifestDir 存储 .agents marketplace 清单目录。
+    const marketplaceManifestDir = join(marketplaceRoot, ".agents", "plugins");
+    // pluginManifestDir 存储仓库根目录的 Codex 插件 manifest 目录。
+    const pluginManifestDir = join(marketplaceRoot, ".codex-plugin");
+    mkdirSync(marketplaceManifestDir, { recursive: true });
+    mkdirSync(pluginManifestDir, { recursive: true });
+    // cachedInstallPath 存储模拟的 Codex 具体版本安装缓存目录。
+    const cachedInstallPath = join(
+      codexHome,
+      "plugins",
+      "cache",
+      "superpowers-dev",
+      "superpowers",
+      "6.0.3",
+    );
+    mkdirSync(cachedInstallPath, { recursive: true });
+    writeFileSync(
+      join(marketplaceManifestDir, "marketplace.json"),
+      JSON.stringify({
+        plugins: [{ name: "superpowers", source: { source: "url", url: "./" } }],
+      }),
+    );
+    writeFileSync(
+      join(pluginManifestDir, "plugin.json"),
+      JSON.stringify({ name: "superpowers", version: "6.1.1" }),
+    );
+
+    // result 存储 Git marketplace 补齐前的插件版本状态。
+    const result = enrichCodexAvailableVersions(
+      codexHome,
+      {
+        tool: "codex",
+        raw_output: "",
+        diagnostics: "",
+        plugins: [
+          {
+            id: "superpowers@superpowers-dev",
+            name: "superpowers",
+            marketplace: "superpowers-dev",
+            current_version: "6.0.3",
+            available_version: "",
+            scope: "",
+            enabled: false,
+            install_path: "",
+            last_updated: "",
+            update_status: "unknown",
+          },
+        ],
+      },
+      {
+        marketplaces: {
+          "superpowers-dev": {
+            source_type: "git",
+            source: "https://github.com/obra/superpowers.git",
+          },
+        },
+      },
+    );
+
+    expect(result.plugins[0].available_version).toBe("6.1.1");
+    expect(result.plugins[0].update_status).toBe("newer");
+    expect(result.plugins[0].install_path).toBe(cachedInstallPath);
+    expect(result.plugins[0].last_updated).not.toBe("");
     rmSync(codexHome, { recursive: true, force: true });
   });
 

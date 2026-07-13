@@ -1,6 +1,6 @@
 // 插件管理核心逻辑：解析 Claude/Codex 插件列表、比较版本并调用 CLI 更新。
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import * as TOML from "smol-toml";
 import { atomicWrite, expandHome, runCommand } from "./util.js";
 
@@ -245,16 +245,31 @@ function parseCodexPluginUpdateJson(content) {
   const availableVersions = new Map();
   for (const item of Array.isArray(root.available) ? root.available : []) {
     // id 存储 marketplace 返回的插件 ID。
-    const id = jsonString(item, "id");
+    const id = jsonString(item, "id") || jsonString(item, "pluginId");
     if (id) {
       availableVersions.set(id, jsonString(item, "version"));
     }
   }
 
+  // installed 存储兼容新旧 Codex CLI 字段名的已安装插件列表。
+  const installed = (Array.isArray(root.installed) ? root.installed : []).map((item) => {
+    // source 存储新版 Codex CLI 返回的插件来源对象。
+    const source = item?.source;
+    return {
+      ...item,
+      id: jsonString(item, "id") || jsonString(item, "pluginId"),
+      marketplace: jsonString(item, "marketplace") || jsonString(item, "marketplaceName"),
+      install_path:
+        jsonString(item, "install_path") ||
+        jsonString(source, "path") ||
+        jsonString(source, "url"),
+    };
+  });
+
   // result 存储统一化后的插件更新结果。
   const result = buildPluginUpdateResult({
     tool: "codex",
-    installed: Array.isArray(root.installed) ? root.installed : [],
+    installed,
     availableVersions,
     idField: "id",
     nameField: "name",
@@ -272,6 +287,69 @@ export function parseClaudePluginUpdateCheckOutput(stdout, stderr) {
   // result 存储基于 stdout 解析出的结果。
   const result = parseClaudePluginUpdateJson(stdout);
   result.diagnostics = String(stderr || "").trim();
+  return result;
+}
+
+// enrichClaudeAvailableVersions 从本地 marketplace 清单补齐已安装插件的可用版本。
+// claudeHome 参数存储 Claude home，result 参数存储 CLI 已解析的检查结果。
+export function enrichClaudeAvailableVersions(claudeHome, result) {
+  // marketplacesRoot 存储 Claude 本地 marketplace 根目录。
+  const marketplacesRoot = join(expandHome(claudeHome), "plugins", "marketplaces");
+  // marketplaceVersions 存储 marketplace 到插件名、版本的两级映射。
+  const marketplaceVersions = new Map();
+
+  for (const plugin of result.plugins) {
+    if (plugin.available_version || !plugin.marketplace) {
+      continue;
+    }
+
+    // versions 存储当前 marketplace 清单中的插件版本映射。
+    let versions = marketplaceVersions.get(plugin.marketplace);
+    if (!versions) {
+      // manifestPath 存储当前 marketplace 的标准清单路径。
+      const manifestPath = join(
+        marketplacesRoot,
+        plugin.marketplace,
+        ".claude-plugin",
+        "marketplace.json",
+      );
+      // nextVersions 存储首次读取当前 marketplace 后得到的插件版本映射。
+      const nextVersions = new Map();
+      if (existsSync(manifestPath)) {
+        try {
+          // manifest 存储解析后的 marketplace 清单。
+          const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+          for (const item of Array.isArray(manifest.plugins) ? manifest.plugins : []) {
+            // name 存储 marketplace 清单中的插件短名称。
+            const name = jsonString(item, "name");
+            // version 存储 marketplace 声明的最新插件版本。
+            const version = jsonString(item, "version");
+            if (name && version) {
+              nextVersions.set(name, version);
+            }
+          }
+        } catch (error) {
+          // marketplace 文件损坏时保留 CLI 结果，并把原因放入诊断信息供界面排查。
+          result.diagnostics = [
+            result.diagnostics,
+            `解析 marketplace ${plugin.marketplace} 失败: ${error.message}`,
+          ]
+            .filter(Boolean)
+            .join("\n");
+        }
+      }
+      marketplaceVersions.set(plugin.marketplace, nextVersions);
+      versions = nextVersions;
+    }
+
+    // availableVersion 存储 marketplace 清单中与当前插件匹配的版本。
+    const availableVersion = versions.get(plugin.name) || versions.get(pluginShortName(plugin.id));
+    if (availableVersion) {
+      plugin.available_version = availableVersion;
+      plugin.update_status = compareVersions(plugin.current_version, availableVersion);
+    }
+  }
+
   return result;
 }
 
@@ -397,12 +475,130 @@ export function buildCodexFallbackResult(codexHome, diagnostics) {
 
   plugins.sort((left, right) => left.id.toLowerCase().localeCompare(right.id.toLowerCase()));
 
-  return {
+  // result 存储本地 fallback 构造结果，随后从配置的 marketplace 补齐最新版本。
+  const result = {
     tool: "codex",
     plugins,
     raw_output: "",
     diagnostics: String(diagnostics || ""),
   };
+  return enrichCodexAvailableVersions(codexHome, result, root);
+}
+
+// readCodexMarketplaceVersions 读取单个 Codex marketplace 中各插件声明的最新版本。
+// marketplaceRoot 参数存储 marketplace 根目录。
+function readCodexMarketplaceVersions(marketplaceRoot) {
+  // versions 存储插件短名称到最新版本的映射。
+  const versions = new Map();
+  // manifestCandidates 存储 Codex 与兼容 marketplace 可能使用的清单路径。
+  const manifestCandidates = [
+    join(marketplaceRoot, ".agents", "plugins", "marketplace.json"),
+    join(marketplaceRoot, ".codex-plugin", "marketplace.json"),
+    join(marketplaceRoot, ".claude-plugin", "marketplace.json"),
+  ];
+  // manifestPath 存储首个存在的 marketplace 清单路径。
+  const manifestPath = manifestCandidates.find((candidate) => existsSync(candidate));
+  if (!manifestPath) {
+    return versions;
+  }
+
+  // manifest 存储解析后的 marketplace 清单。
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  for (const item of Array.isArray(manifest.plugins) ? manifest.plugins : []) {
+    // name 存储 marketplace 中的插件短名称。
+    const name = jsonString(item, "name");
+    // sourcePath 存储插件相对 marketplace 根目录的源码路径。
+    const sourcePath =
+      jsonString(item, "source") ||
+      jsonString(item?.source, "path") ||
+      jsonString(item?.source, "url") ||
+      `./plugins/${name}`;
+    // pluginManifestPath 存储插件自身声明版本的 Codex manifest 路径。
+    const pluginManifestPath = resolve(marketplaceRoot, sourcePath, ".codex-plugin", "plugin.json");
+    // version 存储 marketplace 条目或插件 manifest 声明的版本。
+    let version = jsonString(item, "version");
+    if (!version && existsSync(pluginManifestPath)) {
+      // pluginManifest 存储解析后的 Codex 插件 manifest。
+      const pluginManifest = JSON.parse(readFileSync(pluginManifestPath, "utf8"));
+      version = jsonString(pluginManifest, "version");
+    }
+    if (name && version) {
+      versions.set(name, version);
+    }
+  }
+  return versions;
+}
+
+// enrichCodexAvailableVersions 从 config.toml 配置的 marketplace 补齐 Codex 插件可用版本。
+// codexHome 参数存储 Codex home，result 参数存储检查结果，configRoot 参数允许 fallback 复用已解析配置。
+export function enrichCodexAvailableVersions(codexHome, result, configRoot) {
+  // root 存储 Codex config.toml 根对象。
+  const root = configRoot || readCodexConfigRoot(codexHome);
+  // marketplaces 存储 marketplace 名称到配置项的映射。
+  const marketplaces = root.marketplaces || {};
+  // cachedVersions 存储已读取 marketplace 的版本映射，避免同市场重复读盘。
+  const cachedVersions = new Map();
+
+  for (const plugin of result.plugins) {
+    // cachedInstallPath 存储当前插件具体版本的本地安装缓存目录。
+    const cachedInstallPath = join(
+      expandHome(codexHome),
+      "plugins",
+      "cache",
+      plugin.marketplace,
+      plugin.name,
+      plugin.current_version,
+    );
+    if (plugin.marketplace && plugin.name && plugin.current_version && existsSync(cachedInstallPath)) {
+      // Codex 新版 CLI 不返回安装路径与更新时间，因此以实际版本缓存目录作为 Finder 路径和更新时间来源。
+      plugin.install_path = cachedInstallPath;
+      // cacheStat 存储版本缓存目录的文件系统时间信息。
+      const cacheStat = statSync(cachedInstallPath);
+      plugin.last_updated = cacheStat.mtime.toISOString();
+    }
+
+    if (plugin.available_version || !plugin.marketplace) {
+      continue;
+    }
+
+    // versions 存储当前插件所属 marketplace 的版本映射。
+    let versions = cachedVersions.get(plugin.marketplace);
+    if (!versions) {
+      // marketplaceConfig 存储 config.toml 中当前 marketplace 配置。
+      const marketplaceConfig = marketplaces[plugin.marketplace];
+      // marketplaceSource 存储 marketplace 本地根目录。
+      const marketplaceSource = jsonString(marketplaceConfig, "source");
+      // marketplaceSourceType 存储 marketplace 来源类型，用于区分本地目录与 Git URL。
+      const marketplaceSourceType = jsonString(marketplaceConfig, "source_type");
+      // marketplaceRoot 存储最终可读取的 marketplace 快照根目录。
+      const marketplaceRoot =
+        marketplaceSourceType === "git"
+          ? join(expandHome(codexHome), ".tmp", "marketplaces", plugin.marketplace)
+          : expandHome(marketplaceSource);
+      try {
+        versions = marketplaceSource
+          ? readCodexMarketplaceVersions(marketplaceRoot)
+          : new Map();
+      } catch (error) {
+        versions = new Map();
+        result.diagnostics = [
+          result.diagnostics,
+          `解析 Codex marketplace ${plugin.marketplace} 失败: ${error.message}`,
+        ]
+          .filter(Boolean)
+          .join("\n");
+      }
+      cachedVersions.set(plugin.marketplace, versions);
+    }
+
+    // availableVersion 存储 marketplace 中与当前插件匹配的最新版本。
+    const availableVersion = versions.get(plugin.name) || versions.get(pluginShortName(plugin.id));
+    if (availableVersion) {
+      plugin.available_version = availableVersion;
+      plugin.update_status = compareVersions(plugin.current_version, availableVersion);
+    }
+  }
+  return result;
 }
 
 // runPluginCliRaw 执行插件相关 CLI 命令，返回拆分 stdout/stderr。
@@ -437,7 +633,9 @@ export async function checkClaudePluginUpdates(claudeHome) {
     "CLAUDE_HOME",
     claudeHome,
   );
-  return parseClaudePluginUpdateCheckOutput(output.stdout, output.stderr);
+  // result 存储 CLI 解析结果，随后用 marketplace 清单补齐 CLI 不返回的已安装插件版本。
+  const result = parseClaudePluginUpdateCheckOutput(output.stdout, output.stderr);
+  return enrichClaudeAvailableVersions(claudeHome, result);
 }
 
 // checkCodexPluginUpdates 检查 Codex 已安装插件是否存在可用更新。
@@ -453,7 +651,9 @@ export async function checkCodexPluginUpdates(codexHome) {
       "CODEX_HOME",
       codexHome,
     );
-    return parseCodexPluginUpdateCheckOutput(output.stdout, output.stderr);
+    // result 存储 CLI 结果，并从 config.toml 指向的 marketplace 补齐缺失版本。
+    const result = parseCodexPluginUpdateCheckOutput(output.stdout, output.stderr);
+    return enrichCodexAvailableVersions(expandedHome, result);
   } catch (error) {
     return buildCodexFallbackResult(expandedHome, error.message);
   }
