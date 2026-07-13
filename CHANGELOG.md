@@ -2,6 +2,14 @@
 
 本项目所有重要变更记录于此，遵循语义化版本规则。
 
+## 0.13.1 - 2026-07-14
+
+### 修复
+
+- 提交公开的 npmmirror registry 配置，并为 Electron 打包命令配置 Electron 与 electron-builder 二进制镜像，减少依赖安装和打包下载耗时；私有凭据继续仅允许放在用户级 `.npmrc`。
+- 修复 App 测试未等待 Ant Design Menu 挂载 effect，导致测试通过但持续输出 React `act(...)` warning 的问题。
+- 修复 Windows 下原子写入临时文件名和测试 TOML 路径转义不兼容，确保 Windows CI 能真实执行完整测试。
+
 ## 0.13.0 - 2026-07-13
 
 ### 新增

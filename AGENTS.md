@@ -28,7 +28,7 @@ npx vitest run -t "resolveDevServerAction"               # 按用例名过滤
 npx vitest run test/core/plugins.test.js                 # 单个 Node 后端测试
 ```
 
-本项目使用 pnpm 与 `pnpm-lock.yaml`，不要提交 `.npmrc`、`package-lock.json` 或 `yarn.lock`。
+本项目使用 pnpm 与 `pnpm-lock.yaml`，不要提交 `package-lock.json` 或 `yarn.lock`。项目级 `.npmrc` 必须提交，且只允许公开、无凭据的 registry 配置；私有 registry、认证 token 和内网地址必须放用户级 `~/.npmrc`。
 
 ## 架构
 

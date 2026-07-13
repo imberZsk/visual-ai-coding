@@ -1,7 +1,7 @@
 // Electron 后端公共工具：路径展开、原子写入、登录 shell PATH 解析与子进程执行。
 import { execFile, spawn } from "node:child_process";
 import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { homedir } from "node:os";
 
 // cachedLoginPath 缓存登录 shell 解析出的 PATH，undefined 表示尚未初始化，null 表示初始化中（进行中的 Promise）。
@@ -31,7 +31,7 @@ export function atomicWrite(filePath, content) {
   // parentDir 存储目标文件父目录，临时文件必须与目标同目录以保证 rename 原子性。
   const parentDir = dirname(targetPath);
   // fileName 存储目标文件名，用于构造隐藏临时文件名。
-  const fileName = targetPath.split("/").pop() || "config";
+  const fileName = basename(targetPath) || "config";
   // tempPath 存储同目录临时文件路径。
   const tempPath = join(parentDir, `.${fileName}.tmp`);
 
