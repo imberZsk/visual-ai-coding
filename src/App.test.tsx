@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -17,6 +17,17 @@ let storeState: {
 
 // rerenderApp 存储当前测试中的重新渲染函数。
 let rerenderApp: (() => void) | null = null;
+
+// renderApp 在异步 act 边界内渲染应用，等待 rc-menu 挂载 effect 的内部状态更新完成。
+async function renderApp() {
+  // rendered 存储 App 渲染结果，供用例执行 DOM 查询和后续重渲染。
+  let rendered: ReturnType<typeof render> | undefined;
+  await act(async () => {
+    rendered = render(<App />);
+    await Promise.resolve();
+  });
+  return rendered as ReturnType<typeof render>;
+}
 
 vi.mock("./store", () => ({
   useAppStore: (selector: (state: unknown) => unknown) =>
@@ -73,7 +84,6 @@ vi.mock("./pages/AgentsPage", () => ({
 
 describe("App tab loading", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     storeState = {
       loaded: true,
       prefs: {
@@ -89,14 +99,13 @@ describe("App tab loading", () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     rerenderApp = null;
   });
 
   // 验证切换任意页签时只保留内容过渡，不再叠加整页 loading 遮罩。
   it("switches tabs with content animation without stacked loading", async () => {
     // rendered 存储 App 渲染结果，供 mock store 触发重渲染。
-    const rendered = render(<App />);
+    const rendered = await renderApp();
     rerenderApp = () => rendered.rerender(<App />);
 
     // codexPluginItem 存储 Codex 一级分组下的插件二级入口。
@@ -113,9 +122,9 @@ describe("App tab loading", () => {
   });
 
   // 验证应用使用桌面控制台式左侧栏，而不是顶部页签栏布局。
-  it("renders a desktop sidebar navigation instead of a top tab bar", () => {
+  it("renders a desktop sidebar navigation instead of a top tab bar", async () => {
     // rendered 存储 App 渲染结果，供布局断言查询 DOM。
-    const rendered = render(<App />);
+    const rendered = await renderApp();
 
     expect(screen.getByTestId("app-sidebar")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "主导航" })).toBeInTheDocument();
@@ -131,9 +140,9 @@ describe("App tab loading", () => {
   });
 
   // 验证 Dashboard 作为左侧导航的第一入口，并在默认页显示选中态。
-  it("keeps overview available as the first sidebar entry", () => {
+  it("keeps overview available as the first sidebar entry", async () => {
     // rendered 存储 App 渲染结果，供 Dashboard 初始状态断言使用。
-    const rendered = render(<App />);
+    const rendered = await renderApp();
     rerenderApp = () => rendered.rerender(<App />);
 
     expect(screen.getByText("概览页面")).toBeInTheDocument();
@@ -146,9 +155,9 @@ describe("App tab loading", () => {
   });
 
   // 验证设置入口不混入主导航，而是保留为左侧栏底部操作。
-  it("keeps settings as a sidebar utility action outside main navigation", () => {
+  it("keeps settings as a sidebar utility action outside main navigation", async () => {
     // rendered 存储 App 渲染结果，供导航断言查询 DOM。
-    const rendered = render(<App />);
+    const rendered = await renderApp();
     rerenderApp = () => rendered.rerender(<App />);
 
     // nav 存储主导航区域，避免页面内容或工具区操作影响导航断言。
@@ -161,7 +170,7 @@ describe("App tab loading", () => {
   // 验证 Codex 与 Claude Code 作为一级入口，并以手风琴方式只展开一个工具分组。
   it("renders tool groups as an accordion with scoped capability entries", async () => {
     // rendered 存储 App 渲染结果，供 mock store 在页签切换时触发重渲染。
-    const rendered = render(<App />);
+    const rendered = await renderApp();
     rerenderApp = () => rendered.rerender(<App />);
 
     // nav 存储主导航区域，用于限定按钮查询范围。
@@ -194,9 +203,9 @@ describe("App tab loading", () => {
   });
 
   // 验证设置按钮可从左侧栏打开右侧抽屉，并直接展示概览与真实设置表单内容。
-  it("opens the settings drawer from the sidebar settings button", () => {
+  it("opens the settings drawer from the sidebar settings button", async () => {
     // rendered 存储 App 渲染结果，供 mock store 触发重渲染。
-    const rendered = render(<App />);
+    const rendered = await renderApp();
     rerenderApp = () => rendered.rerender(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
@@ -214,7 +223,7 @@ describe("App tab loading", () => {
   });
 
   // 验证抽屉里的概览是内嵌内容，不再切换到 Dashboard 路由。
-  it("keeps overview embedded in the settings drawer without changing routes", () => {
+  it("keeps overview embedded in the settings drawer without changing routes", async () => {
     storeState = {
       ...storeState,
       prefs: {
@@ -224,7 +233,7 @@ describe("App tab loading", () => {
     };
 
     // rendered 存储 App 渲染结果，供抽屉入口触发重渲染。
-    const rendered = render(<App />);
+    const rendered = await renderApp();
     rerenderApp = () => rendered.rerender(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
@@ -236,9 +245,9 @@ describe("App tab loading", () => {
   });
 
   // 验证主题快捷按钮只显示图标，依旧能按 light/dark/system 循环更新偏好。
-  it("cycles theme from an icon-only quick theme button", () => {
+  it("cycles theme from an icon-only quick theme button", async () => {
     // rendered 存储 App 渲染结果，供主题切换后刷新按钮状态。
-    const rendered = render(<App />);
+    const rendered = await renderApp();
     rerenderApp = () => rendered.rerender(<App />);
 
     // themeButton 存储顶部主题快捷切换按钮。
