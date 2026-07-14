@@ -87,7 +87,7 @@ export function parseUnifiedMcp(content) {
   try {
     parsed = JSON.parse(text)
   } catch (error) {
-    throw new Error(`统一 MCP 配置 JSON 解析失败: ${error.message}`)
+    throw new Error(`统一 MCP 配置 JSON 解析失败: ${error.message}`, { cause: error })
   }
 
   // rawServers 存储 mcpServers 字段，兼容直接以对象为根的旧写法。
