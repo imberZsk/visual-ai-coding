@@ -226,7 +226,7 @@ describe('App tab loading', () => {
     // drawer 存储设置抽屉，确保标题与设置内容都在抽屉内出现。
     const drawer = screen.getByRole('dialog', { name: '设置' })
     expect(drawer).toBeInTheDocument()
-    expect(drawer).toHaveClass('ant-drawer-content')
+    expect(drawer).toHaveClass('ant-drawer-section')
     expect(within(drawer).getByText('概览内嵌内容')).toBeInTheDocument()
     expect(within(drawer).getByText('主题')).toBeInTheDocument()
     expect(
