@@ -42,6 +42,8 @@ export default defineConfig({
     setupFiles: 'src/test/setup.ts',
     // globals 存储是否启用全局 describe、it 和 expect。
     globals: true,
+    // testTimeout 存储单用例超时上限，兼容 Windows 共享 runner 上较慢的 Ant Design 交互渲染。
+    testTimeout: 15000,
     // coverage 存储覆盖率测量配置。
     coverage: {
       // provider 存储覆盖率引擎，v8 使用 V8 内置覆盖率采集，无需额外插桩。
