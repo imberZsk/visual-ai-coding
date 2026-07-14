@@ -162,7 +162,7 @@ function SkillTable({
       key: 'name',
       width: 220,
       render: (_value, skill) => (
-        <Space direction="vertical" size={6} className="min-w-0">
+        <Space orientation="vertical" size={6} className="min-w-0">
           <Typography.Text strong ellipsis={{ tooltip: skill.name }}>
             {skill.name}
           </Typography.Text>
