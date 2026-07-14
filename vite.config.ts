@@ -1,6 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// splitVendorChunk 将 Ant Design 相关依赖拆到独立 chunk；id 是 Rolldown 传入的模块绝对标识。
+function splitVendorChunk(id: string) {
+  return id.includes('/node_modules/antd/') ||
+    id.includes('/node_modules/@ant-design/icons/')
+    ? 'vendor-antd'
+    : undefined
+}
+
 // Vite 与 Vitest 配置：Electron 渲染进程使用相对 base 以便 file:// 加载。
 export default defineConfig({
   base: './',
@@ -22,10 +30,8 @@ export default defineConfig({
     chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
-        // manualChunks 将 Ant Design 入口显式拆包，依赖归属交给 Rollup，避免手工分桶造成循环 chunk。
-        manualChunks: {
-          'vendor-antd': ['antd', '@ant-design/icons'],
-        },
+        // manualChunks 使用函数形式兼容 Vite 8 的 Rolldown 输出接口。
+        manualChunks: splitVendorChunk,
       },
     },
   },
@@ -36,6 +42,8 @@ export default defineConfig({
     setupFiles: 'src/test/setup.ts',
     // globals 存储是否启用全局 describe、it 和 expect。
     globals: true,
+    // testTimeout 存储单用例超时上限，兼容 Windows 共享 runner 上较慢的 Ant Design 交互渲染。
+    testTimeout: 15000,
     // coverage 存储覆盖率测量配置。
     coverage: {
       // provider 存储覆盖率引擎，v8 使用 V8 内置覆盖率采集，无需额外插桩。

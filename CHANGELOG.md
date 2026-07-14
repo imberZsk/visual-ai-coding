@@ -13,6 +13,8 @@
 ### 变更
 
 - 侧边导航二级页签文案英文化：概览 → Dashboard、配置 → Settings、插件 → Plugins、技能 → Skills；左下角应用设置按钮保留中文「设置」。
+- 统一升级至 React 19、Ant Design 6、Electron 43、Vite 8、TypeScript 6 与 pnpm 11.13，并完成 Tailwind 4、ESLint 10 和测试环境兼容迁移。
+- 统一 macOS arm64 与 Windows x64 双平台构建、测试和打包口径，并补齐开源协议、安全策略与行为准则。
 
 ## 0.14.0 - 2026-07-14
 
