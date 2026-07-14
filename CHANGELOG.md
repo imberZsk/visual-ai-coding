@@ -2,6 +2,18 @@
 
 本项目所有重要变更记录于此，遵循语义化版本规则。
 
+## 0.15.0 - 2026-07-15
+
+### 新增
+
+- 新增顶层「统一配置」页：MCP server 与 Skills 只写一次，一键同步到 Claude Code 与 Codex。
+  - MCP 以中立 JSON 格式存放于 `~/.visualAiCoding/unified/mcp.json`，同步时分别写入 Claude 的 `~/.claude.json` 与 Codex 的 `config.toml`；采用「块替换」而非整文件覆盖，写入的 server 带托管标记，不会覆盖用户手动添加的 server 或其余配置。
+  - Skills 放入 `~/.visualAiCoding/unified/skills/`，同步时软链到两端 skills 目录；遇到同名真实目录会跳过并给出警告。
+
+### 变更
+
+- 侧边导航二级页签文案英文化：概览 → Dashboard、配置 → Settings、插件 → Plugins、技能 → Skills；左下角应用设置按钮保留中文「设置」。
+
 ## 0.14.0 - 2026-07-14
 
 ### 新增
