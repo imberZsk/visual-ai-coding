@@ -2,6 +2,12 @@
 
 本项目所有重要变更记录于此，遵循语义化版本规则。
 
+## 0.14.0 - 2026-07-14
+
+### 新增
+
+- 接入 ESLint、Prettier、Husky、Commitlint 与 lint-staged，并在 CI 中执行完整代码检查。
+
 ## 0.13.1 - 2026-07-14
 
 ### 修复
@@ -228,50 +234,57 @@
 - **IPC Handler 异步化**：`src/core/settings.js` 的 `listDir`、`readCustomOutputStyle`、`listClaudeOutputStyles` 改用 `fs/promises` 并行读取，不再阻塞主进程；`src/core/skills.js` 的 `collectSkillFiles`、`scanSkillRoot`、`listSkills` 全部改为 async，并发读取各目录下的 SKILL.md
 - **SkillsPage 并发防护**：`loadSkills` 引入 `loadingRef` 序号机制，丢弃过期请求结果，防止快速触发时旧响应覆盖新响应
 
-
-
 ### 变更
+
 - 顶部主导航页签改用 Ant Design `Segmented` 组件替换原手写的分段滑块。原实现用 `useLayoutEffect` + `getBoundingClientRect` 测量激活按钮宽度/偏移，再用绝对定位的 `<div>` 配合 `translateX` 模拟高亮滑块——首帧测量时机、字体加载与窗口尺寸变化都会让滑块与按钮错位（线框重叠、文字未居中）。Segmented 内建滑块动画、文字居中与无重叠布局，且已通过入口 `ConfigProvider` 接入项目主题，无需再手写测量逻辑。Dashboard 等不在 `NAV_ITEMS` 的隐藏入口天然不高亮任何页签，替代了原来手动隐藏滑块的分支。
 
 ## 0.5.1 - 2026-07-02
 
 ### 修复
+
 - 消除 `pnpm dev` 启动时的 `npm warn Unknown env config` 警告：`dev` 脚本原用 `concurrently "npm:dev:vite" ...` 的 `npm:` 简写会 spawn 一个 npm 子进程，pnpm 会把自身独有的配置键（`verify-deps-before-run`、`_jsr-registry`、`npm-globalconfig`）通过 `npm_config_*` 环境变量注入子进程，npm 不认识这些键便报警。改为让 concurrently 直接内联执行底层命令（node/wait-on/electron），不再经过 `npm run` 这层，从而与包管理器解耦、警告消失。同步把 `start`、`verify:boot`、`dist` 中的 `npm run build` 内联为 `tsc && vite build`，避免这些命令在 pnpm 下触发同样警告。
 
 ## 0.5.0 - 2026-07-02
 
 ### 变更
+
 - 前端公共 UI 原语切换为 Ant Design：loading 使用 `Spin`，按钮使用 AntD loading 状态，徽章、卡片与空状态分别复用 `Tag`、`Card`、`Empty`。
 - 顶部主题、设置与关闭入口改用 Ant Design 图标，并保留中文无障碍名称。
 - 入口新增 Ant Design `ConfigProvider`，浅色、深色与跟随系统主题下的 AntD 组件与项目语义色同步。
 - 构建配置新增 AntD vendor chunk，避免 UI 库集中进入业务入口包。
 
 ### 测试
+
 - 新增公共 UI 原语测试，覆盖 AntD Spin/Button/Tag/Card/Empty 结构与 loading 兼容标记。
 
 ## 0.4.0 - 2026-07-02
 
 ### 变更
+
 - 运行时从 Tauri 重构为 Electron：新增主进程、preload 安全桥、IPC handler 与 `src/core` Node 后端模块。
 - 前端 API 层改为通过 `window.api` 调用后端，移除 `@tauri-apps/*` 依赖与 `src-tauri` 后端目录。
 - 开发/打包脚本改为 Vite + Electron，并新增 Electron 启动冒烟测试。
 
 ### 测试
+
 - 新增 Node 后端与 Electron IPC 单元测试，覆盖路径展开、原子写入、配置校验、插件更新解析、Skill 扫描和 IPC 注册。
 
 ## 0.3.0 - 2026-07-01
 
 ### 新增
+
 - 可视化配置项：为已在官方文档 / 官方 JSON Schema 中核实到固定默认值的字段（如 `autoCompactEnabled`、`theme`、`sandbox.enabled`、`allow_login_shell` 等）新增"默认值：xxx"展示，未核实到官方默认值的字段不展示，避免臆造数据。
 
 ## 0.2.1 - 2026-07-01
 
 ### 修复
+
 - 插件管理页：最近更新时间改为北京时间中文格式，避免直接展示 ISO 时间中的 `T`、`Z` 等原始标记。
 
 ## 0.2.0 - 2026-07-01
 
 ### 新增
+
 - 可视化配置项：每个字段标题旁展示真实配置 key/path，例如“默认模型”展示 `model`。
 - 应用设置页：新增官方设置来源区，展示 Claude / Codex 配置来源 URL、同步时间、字段覆盖统计和未覆盖字段预览，并支持手动更新官方设置元数据。
 - Claude Code 配置页：输出风格字段改为专用控件，可选择内置/自定义 output style，缺失时提示目标 Markdown 路径并支持一键创建。
@@ -282,6 +295,7 @@
 首个版本。可视化管理 Claude Code 与 Codex 的配置、插件与工具。
 
 ### 新增
+
 - 概览页：探测本机 Claude Code / Codex CLI 安装状态、版本、路径，配置目录一键 Finder / VSCode 打开
 - Claude Code 配置页：可视化编辑 settings.json、CLAUDE.md，只读查看插件与市场清单
 - Codex 配置页：可视化编辑 config.toml、AGENTS.md、hooks.json，只读查看 version.json
@@ -291,6 +305,7 @@
 - 保存配置前做 JSON / TOML 语法校验
 
 ### 健壮性（首轮代码审查后修复）
+
 - 原子写入（临时文件 + rename），防止写入中途崩溃损坏 settings.json / config.toml 等配置
 - 登录 shell PATH 解析，修复 macOS 从 Finder 启动的 GUI 应用不继承终端 PATH、导致 claude / code CLI 探测与插件更新失败的问题
 - 插件更新透传 scope，修复 project 作用域插件更新错对象的问题
@@ -298,6 +313,7 @@
 - 偏好文件损坏时先备份为 .corrupted 再回退默认值，避免覆盖丢失
 
 ### 技术
+
 - 技术栈：Tauri 1.5 + React 18 + TypeScript + Tailwind CSS 3
 - 14 个 Rust 单元测试覆盖路径展开、格式推断、内容校验、原子写入
 - 通过 dmg 打包验收
