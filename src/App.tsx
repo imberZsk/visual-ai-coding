@@ -14,6 +14,7 @@ import SkillsPage from './pages/SkillsPage'
 import SettingsPage from './pages/SettingsPage'
 import UnifiedPage from './pages/UnifiedPage'
 import { LoadingIcon } from './components/ui'
+import AppUpdateButton from './components/AppUpdateButton'
 
 // 根据当前激活页签渲染对应页面组件
 function renderPage(tab: string) {
@@ -98,6 +99,7 @@ export default function App() {
       className="flex h-full w-full flex-row overflow-hidden bg-surface text-text-main"
     >
       {/* 左侧控制台导航栏 */}
+      <AppUpdateButton />
       <Sidebar />
       {/* 右侧内容区：可滚动。scrollbar-gutter:stable 预留滚动条宽度，内容高度变化导致滚动条出现/消失时避免内容区横向跳动（CLS） */}
       <main className="relative min-w-0 flex-1 overflow-y-auto bg-surface [scrollbar-gutter:stable]">
