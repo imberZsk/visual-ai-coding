@@ -36,6 +36,12 @@ const IPC = {
 
 // api 存储暴露给渲染进程的受限调用集合。
 const api = {
+  // checkAppUpdate 检查 GitHub Release 新版本。
+  checkAppUpdate: () => ipcRenderer.invoke('app-update:check'),
+  // downloadAppUpdate 下载完整安装包。
+  downloadAppUpdate: () => ipcRenderer.invoke('app-update:download'),
+  // installAppUpdate 安装已下载版本并重启。
+  installAppUpdate: () => ipcRenderer.invoke('app-update:install'),
   // getPreferences 读取应用偏好。
   getPreferences: () => ipcRenderer.invoke(IPC.GET_PREFERENCES),
   // savePreferences 保存应用偏好。

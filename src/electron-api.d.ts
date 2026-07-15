@@ -21,6 +21,13 @@ import type {
 declare global {
   interface Window {
     api?: {
+      checkAppUpdate: () => Promise<{
+        available: boolean
+        version?: string
+        downloaded?: boolean
+      }> // 检查应用更新。
+      downloadAppUpdate: () => Promise<{ downloaded: boolean }> // 下载应用更新。
+      installAppUpdate: () => Promise<boolean> // 安装应用更新。
       getPreferences: () => Promise<Preferences> // 读取应用偏好。
       savePreferences: (prefs: Preferences) => Promise<void> // 保存应用偏好。
       getOfficialSettingsSources: () => Promise<OfficialSettingsSyncResult> // 读取官方设置来源缓存。

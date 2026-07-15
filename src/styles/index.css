@@ -1,6 +1,12 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@config "../../tailwind.config.js";
+
+/* Ant Design 6 不再提供 reset.css，基础盒模型由应用样式统一维护。 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
 /* 侧边层级导航使用主题语义色，一级工具与二级能力通过缩进和字号形成清晰层次。 */
 .sidebar-menu.ant-menu {
@@ -93,8 +99,9 @@ body,
 body {
   background-color: rgb(var(--surface));
   color: rgb(var(--text-main));
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-    "Microsoft YaHei", sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -149,8 +156,8 @@ body {
 }
 
 /* Ant Design 按钮 loading 图标：固定图标盒，避免 Spin 自身行高拉偏文字基线 */
-.ant-btn .ant-btn-icon [data-testid="loading-icon"],
-.ant-btn [data-testid="loading-icon"] .ant-spin {
+.ant-btn .ant-btn-icon [data-testid='loading-icon'],
+.ant-btn [data-testid='loading-icon'] .ant-spin {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -448,7 +455,7 @@ body {
   height: 0.38rem;
   border-radius: 999px;
   background: rgb(var(--text-muted) / 0.62);
-  content: "";
+  content: '';
 }
 
 /* 可视化配置项已设置状态：仅把标识胶囊和圆点转为成功色，保持整行中性 */
@@ -485,8 +492,9 @@ body {
   min-height: 18rem;
   resize: vertical;
   background: rgb(var(--sidebar));
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-    "Courier New", monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
   font-size: 12px;
   line-height: 1.65;
 }
@@ -501,8 +509,9 @@ body {
   min-height: 16rem;
   resize: vertical;
   background: rgb(var(--sidebar));
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-    "Courier New", monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
   font-size: 13px;
   line-height: 1.7;
 }
