@@ -100,6 +100,55 @@ describe("core plugins", () => {
     rmSync(claudeHome, { recursive: true, force: true });
   });
 
+  // 验证 marketplace 总清单版本滞后时，以插件自身 manifest 的实际版本为准。
+  it("prefers the Claude plugin manifest version over a stale marketplace entry", () => {
+    // claudeHome 存储测试专属 Claude home。
+    const claudeHome = join(tmpdir(), `visual-aicoding-claude-manifest-${process.pid}-${Date.now()}`);
+    // marketplaceDir 存储模拟 marketplace 根目录。
+    const marketplaceDir = join(claudeHome, "plugins", "marketplaces", "cyt-plugins");
+    // marketplaceManifestDir 存储 marketplace 总清单目录。
+    const marketplaceManifestDir = join(marketplaceDir, ".claude-plugin");
+    // pluginManifestDir 存储 development-tools 插件自身 manifest 目录。
+    const pluginManifestDir = join(marketplaceDir, "development-tools", ".claude-plugin");
+    mkdirSync(marketplaceManifestDir, { recursive: true });
+    mkdirSync(pluginManifestDir, { recursive: true });
+    writeFileSync(
+      join(marketplaceManifestDir, "marketplace.json"),
+      JSON.stringify({
+        plugins: [{ name: "development-tools", source: "./development-tools", version: "1.8.1" }],
+      }),
+    );
+    writeFileSync(
+      join(pluginManifestDir, "plugin.json"),
+      JSON.stringify({ name: "development-tools", version: "1.8.2" }),
+    );
+
+    // result 存储插件自身 manifest 补齐后的检查结果。
+    const result = enrichClaudeAvailableVersions(claudeHome, {
+      tool: "claude",
+      raw_output: "{}",
+      diagnostics: "",
+      plugins: [
+        {
+          id: "development-tools@cyt-plugins",
+          name: "development-tools",
+          marketplace: "cyt-plugins",
+          current_version: "1.8.1",
+          available_version: "",
+          scope: "user",
+          enabled: true,
+          install_path: "/tmp/development-tools",
+          last_updated: "",
+          update_status: "unknown",
+        },
+      ],
+    });
+
+    expect(result.plugins[0].available_version).toBe("1.8.2");
+    expect(result.plugins[0].update_status).toBe("newer");
+    rmSync(claudeHome, { recursive: true, force: true });
+  });
+
   // 验证真实检查会先刷新 marketplace，避免本地清单滞后于远程版本。
   it("refreshes Claude marketplaces before checking available plugin versions", async () => {
     // claudeHome 存储测试专属 Claude home。

@@ -4,7 +4,7 @@
 
 ### 修复
 
-- Claude 插件检查更新前先刷新远程 marketplace，并在刷新失败时保留本地缓存检查与诊断信息，修复 `cyt-dev-enhanced@cyt-plugins` 远程已发布新版本但仍被误判为最新版的问题。
+- Claude 插件检查更新前先刷新远程 marketplace，并在刷新失败时保留本地缓存检查与诊断信息；版本解析优先读取插件自身 manifest，修复 `cyt-dev-enhanced@cyt-plugins` 远程已发布新版本，以及 `development-tools@cyt-plugins` 总清单版本滞后时无法发现更新的问题。
 
 ## 0.16.0 - 2026-07-15
 

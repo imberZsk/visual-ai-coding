@@ -319,10 +319,11 @@ export function enrichClaudeAvailableVersions(claudeHome, result) {
     // versions 存储当前 marketplace 清单中的插件版本映射。
     let versions = marketplaceVersions.get(plugin.marketplace)
     if (!versions) {
+      // marketplaceRoot 存储当前 marketplace 的本地快照根目录。
+      const marketplaceRoot = join(marketplacesRoot, plugin.marketplace)
       // manifestPath 存储当前 marketplace 的标准清单路径。
       const manifestPath = join(
-        marketplacesRoot,
-        plugin.marketplace,
+        marketplaceRoot,
         '.claude-plugin',
         'marketplace.json'
       )
@@ -337,8 +338,24 @@ export function enrichClaudeAvailableVersions(claudeHome, result) {
             : []) {
             // name 存储 marketplace 清单中的插件短名称。
             const name = jsonString(item, 'name')
-            // version 存储 marketplace 声明的最新插件版本。
-            const version = jsonString(item, 'version')
+            // sourcePath 存储插件源码相对 marketplace 根目录的位置。
+            const sourcePath = jsonString(item, 'source') || `./${name}`
+            // pluginManifestPath 存储插件自身 Claude manifest 的路径。
+            const pluginManifestPath = resolve(
+              marketplaceRoot,
+              sourcePath,
+              '.claude-plugin',
+              'plugin.json'
+            )
+            // version 存储插件自身 manifest 或 marketplace 条目声明的最新版本。
+            let version = jsonString(item, 'version')
+            if (existsSync(pluginManifestPath)) {
+              // 插件自身 manifest 对应实际安装产物，总清单版本滞后时应以它为准。
+              const pluginManifest = JSON.parse(
+                readFileSync(pluginManifestPath, 'utf8')
+              )
+              version = jsonString(pluginManifest, 'version') || version
+            }
             if (name && version) {
               nextVersions.set(name, version)
             }
