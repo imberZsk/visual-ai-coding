@@ -4,7 +4,8 @@
 
 ### 修复
 
-- Claude 插件检查更新前先刷新远程 marketplace，并在刷新失败时保留本地缓存检查与诊断信息；版本解析优先读取插件自身 manifest，修复 `cyt-dev-enhanced@cyt-plugins` 远程已发布新版本，以及 `development-tools@cyt-plugins` 总清单版本滞后时无法发现更新的问题。
+- Claude 插件检查更新时按已安装来源并行刷新远程 marketplace，为单个来源增加超时兜底并在失败时保留本地缓存与诊断信息；版本解析优先读取插件自身 manifest，修复插件页长期停留在“正在检查插件”，以及 `cyt-dev-enhanced@cyt-plugins`、`development-tools@cyt-plugins` 无法发现远程新版本的问题。
+- 移除插件页标题栏右上角重复的全量检查按钮，保留各工具区块内的检查入口。
 
 ## 0.16.0 - 2026-07-15
 

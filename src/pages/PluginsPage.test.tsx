@@ -424,53 +424,13 @@ describe("PluginsPage", () => {
     }
   });
 
-  // 验证点击顶部“检查全部更新”后，按钮会展示 loading 并在两类工具检查结束后恢复。
-  it("shows loading on refresh all until both plugin checks finish", async () => {
-    // user 存储用户交互模拟器，用于点击刷新按钮。
-    const user = userEvent.setup();
-
+  // 验证标题栏不再展示重复的全量检查按钮，只保留工具区块内的检查入口。
+  it("removes the header refresh-all button", async () => {
     render(<PluginsPage />);
 
     expect(await screen.findByText("superpowers@superpowers-dev")).toBeInTheDocument();
-
-    // claudeDeferred 存储本次刷新中的 Claude 检查 Promise。
-    const claudeDeferred = createDeferred<unknown>();
-    // codexDeferred 存储本次刷新中的 Codex 检查 Promise。
-    const codexDeferred = createDeferred<unknown>();
-
-    invokeMock.mockImplementation((command: string) => {
-      if (command === "check_claude_plugin_updates") {
-        return claudeDeferred.promise;
-      }
-      if (command === "check_codex_plugin_updates") {
-        return codexDeferred.promise;
-      }
-      return Promise.resolve([]);
-    });
-
-    await user.click(screen.getByRole("button", { name: "检查全部更新" }));
-
-    // refreshingButton 存储进入 loading 状态后的刷新按钮，文案保持稳定，loading 用图标表达。
-    const refreshingButton = screen.getByRole("button", { name: "检查全部更新" });
-    expect(refreshingButton).toBeDisabled();
-    expect(within(refreshingButton).getByTestId("loading-icon")).toBeInTheDocument();
-
-    claudeDeferred.resolve({
-      tool: "claude",
-      raw_output: "{}",
-      diagnostics: "",
-      plugins: [],
-    });
-    codexDeferred.resolve({
-      tool: "codex",
-      raw_output: "{}",
-      diagnostics: "",
-      plugins: [],
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "检查全部更新" })).not.toBeDisabled();
-    });
+    expect(screen.queryByRole("button", { name: "检查全部更新" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "检查更新" })).toHaveLength(4);
   });
 
   // 验证单工具检查时只让对应按钮进入 loading，并保留旧列表内容供用户继续操作。

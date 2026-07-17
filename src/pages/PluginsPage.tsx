@@ -314,21 +314,6 @@ export default function PluginsPage({ tool }: PluginsPageProps) {
       <PageHeader
         title={tool ? `${tool === "codex" ? "Codex" : "Claude Code"} · 插件` : "插件"}
         subtitle={tool ? `管理 ${tool === "codex" ? "Codex" : "Claude Code"} 插件，检查可用版本并拉取更新` : "管理 Claude Code 与 Codex 插件，检查可用版本并拉取更新"}
-        actions={
-          <Button
-            onClick={() => {
-              if (tool) {
-                void checkPluginUpdates(tool);
-              } else {
-                void checkAllPluginUpdates();
-              }
-            }}
-            variant="default"
-            loading={tool ? pluginPage[tool].loading : pluginPage.refreshingAll}
-          >
-            {tool ? "检查更新" : "检查全部更新"}
-          </Button>
-        }
       />
 
       {pluginPage.update && (

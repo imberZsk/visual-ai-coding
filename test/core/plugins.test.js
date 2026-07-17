@@ -157,19 +157,28 @@ describe("core plugins", () => {
     // calls 存储命令执行顺序与参数。
     const calls = [];
     // commandRunner 模拟 Claude CLI，并为插件列表返回稳定 JSON。
-    const commandRunner = async (bin, args, homeEnvKey, homeDir) => {
-      calls.push({ bin, args, homeEnvKey, homeDir });
+    const commandRunner = async (bin, args, homeEnvKey, homeDir, timeout) => {
+      calls.push({ bin, args, homeEnvKey, homeDir, timeout });
       return args.includes("list")
-        ? { stdout: JSON.stringify({ installed: [], available: [] }), stderr: "" }
+        ? {
+            stdout: JSON.stringify({
+              installed: [
+                { id: "development-tools@cyt-plugins", version: "1.8.1", scope: "user" },
+              ],
+              available: [],
+            }),
+            stderr: "",
+          }
         : { stdout: "marketplace updated", stderr: "" };
     };
 
     await checkClaudePluginUpdates(claudeHome, commandRunner);
 
     expect(calls.map((call) => call.args)).toEqual([
-      ["plugin", "marketplace", "update"],
       ["plugin", "list", "--json", "--available"],
+      ["plugin", "marketplace", "update", "cyt-plugins"],
     ]);
+    expect(calls[1].timeout).toBe(15_000);
     rmSync(claudeHome, { recursive: true, force: true });
   });
 
@@ -180,13 +189,21 @@ describe("core plugins", () => {
     mkdirSync(claudeHome, { recursive: true });
     // callCount 存储当前模拟命令的调用次数，用于区分刷新与列表查询。
     let callCount = 0;
-    // commandRunner 模拟 marketplace 网络失败后插件列表仍能正常读取。
-    const commandRunner = async () => {
+    // commandRunner 模拟插件列表可读但 marketplace 网络刷新失败。
+    const commandRunner = async (_bin, args) => {
       callCount += 1;
-      if (callCount === 1) {
+      if (args.includes("marketplace")) {
         throw new Error("network unavailable");
       }
-      return { stdout: JSON.stringify({ installed: [], available: [] }), stderr: "" };
+      return {
+        stdout: JSON.stringify({
+          installed: [
+            { id: "development-tools@cyt-plugins", version: "1.8.1", scope: "user" },
+          ],
+          available: [],
+        }),
+        stderr: "",
+      };
     };
 
     // result 存储降级后的插件检查结果。

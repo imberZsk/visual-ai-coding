@@ -115,6 +115,7 @@ export async function runCommand(bin, args = [], options = {}) {
         cwd: options.cwd,
         env: childEnv,
         maxBuffer: options.maxBuffer || 1024 * 1024 * 20,
+        timeout: options.timeout,
       },
       (error, stdout, stderr) => {
         // stdoutText 存储标准输出文本。

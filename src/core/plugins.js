@@ -4,6 +4,9 @@ import { basename, join, resolve } from 'node:path'
 import * as TOML from 'smol-toml'
 import { atomicWrite, expandHome, runCommand } from './util.js'
 
+// CLAUDE_MARKETPLACE_REFRESH_TIMEOUT_MS 存储单个 Claude marketplace 刷新的最长等待时间。
+const CLAUDE_MARKETPLACE_REFRESH_TIMEOUT_MS = 15_000
+
 // parseSemverLike 解析 semver-like 版本字符串。
 // version 参数存储待解析的版本文本。
 function parseSemverLike(version) {
@@ -312,7 +315,7 @@ export function enrichClaudeAvailableVersions(claudeHome, result) {
   const marketplaceVersions = new Map()
 
   for (const plugin of result.plugins) {
-    if (plugin.available_version || !plugin.marketplace) {
+    if (!plugin.marketplace) {
       continue
     }
 
@@ -670,12 +673,15 @@ export function enrichCodexAvailableVersions(codexHome, result, configRoot) {
 }
 
 // runPluginCliRaw 执行插件相关 CLI 命令，返回拆分 stdout/stderr。
-// bin 参数存储命令名，args 参数存储命令参数，homeEnvKey/homeDir 指定工具 home。
-async function runPluginCliRaw(bin, args, homeEnvKey, homeDir) {
+// bin 参数存储命令名，args 参数存储命令参数，homeEnvKey/homeDir 指定工具 home，timeout 指定超时毫秒数。
+async function runPluginCliRaw(bin, args, homeEnvKey, homeDir, timeout) {
   // expandedHome 存储展开后的工具根目录。
   const expandedHome = expandHome(homeDir)
   try {
-    return await runCommand(bin, args, { env: { [homeEnvKey]: expandedHome } })
+    return await runCommand(bin, args, {
+      env: { [homeEnvKey]: expandedHome },
+      timeout,
+    })
   } catch (error) {
     // mergedOutput 存储失败时要原样透传给调用方的合并输出。
     const mergedOutput =
@@ -698,20 +704,6 @@ export async function checkClaudePluginUpdates(
   claudeHome,
   commandRunner = runPluginCliRaw
 ) {
-  // marketplaceDiagnostics 存储远程 marketplace 刷新失败时的诊断信息，失败不阻断缓存检查。
-  let marketplaceDiagnostics = ''
-  try {
-    // 检查更新必须先刷新 marketplace，否则 Claude CLI 的 available 缺项时会读取过期本地清单并误判为最新版。
-    await commandRunner(
-      'claude',
-      ['plugin', 'marketplace', 'update'],
-      'CLAUDE_HOME',
-      claudeHome
-    )
-  } catch (error) {
-    marketplaceDiagnostics = `刷新 Claude marketplace 失败，已使用本地缓存: ${error.message}`
-  }
-
   // output 存储 Claude CLI 原始 stdout/stderr。
   const output = await commandRunner(
     'claude',
@@ -719,11 +711,42 @@ export async function checkClaudePluginUpdates(
     'CLAUDE_HOME',
     claudeHome
   )
-  // result 存储 CLI 解析结果，随后用 marketplace 清单补齐 CLI 不返回的已安装插件版本。
+  // result 存储 CLI 解析结果，随后按已安装插件来源并行刷新 marketplace。
   const result = parseClaudePluginUpdateCheckOutput(
     output.stdout,
-    [marketplaceDiagnostics, output.stderr].filter(Boolean).join('\n')
+    output.stderr
   )
+  // marketplaceNames 存储已安装插件涉及的唯一 marketplace 名称。
+  const marketplaceNames = [
+    ...new Set(result.plugins.map((plugin) => plugin.marketplace).filter(Boolean)),
+  ]
+  // refreshResults 存储各 marketplace 并行刷新后的成功或失败状态。
+  const refreshResults = await Promise.allSettled(
+    marketplaceNames.map((marketplaceName) =>
+      commandRunner(
+        'claude',
+        ['plugin', 'marketplace', 'update', marketplaceName],
+        'CLAUDE_HOME',
+        claudeHome,
+        CLAUDE_MARKETPLACE_REFRESH_TIMEOUT_MS
+      )
+    )
+  )
+  for (let index = 0; index < refreshResults.length; index += 1) {
+    // refreshResult 存储当前位置 marketplace 的刷新结果。
+    const refreshResult = refreshResults[index]
+    if (refreshResult.status === 'rejected') {
+      // marketplaceName 存储刷新失败的 marketplace 名称。
+      const marketplaceName = marketplaceNames[index]
+      // 刷新失败时继续使用本地缓存，并保留具体来源诊断，避免单个远程源阻塞整个页面。
+      result.diagnostics = [
+        result.diagnostics,
+        `刷新 Claude marketplace ${marketplaceName} 失败，已使用本地缓存: ${refreshResult.reason}`,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    }
+  }
   return enrichClaudeAvailableVersions(claudeHome, result)
 }
 

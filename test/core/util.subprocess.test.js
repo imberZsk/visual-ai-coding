@@ -125,6 +125,21 @@ describe('core util 子进程与 PATH 解析', () => {
     expect(result).toEqual({ stdout: 'out', stderr: 'err' })
   })
 
+  // 验证 runCommand 将调用方超时配置传给 execFile，避免外部命令无限挂起。
+  it('runCommand 透传子进程超时时间', async () => {
+    execFileMock.mockImplementation((bin, _args, _opts, cb) => {
+      if (bin === '/bin/zsh' || bin.endsWith('zsh')) {
+        return cb(null, '/p\n', '')
+      }
+      return cb(null, 'out', '')
+    })
+
+    const { runCommand } = await import('../../src/core/util.js')
+    await runCommand('claude', ['plugin'], { timeout: 15_000 })
+
+    expect(execFileMock.mock.calls[1][2].timeout).toBe(15_000)
+  })
+
   // 验证 runCommand 失败时抛出带 stdout/stderr 的错误，便于上层兜底。
   it('runCommand 失败时抛出带输出的错误', async () => {
     execFileMock.mockImplementation((bin, _args, _opts, cb) => {
