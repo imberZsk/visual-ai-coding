@@ -7,6 +7,7 @@ import {
   buildClaudePluginToggleArgs,
   buildCodexFallbackResult,
   buildUpdateToolArgs,
+  checkClaudePluginUpdates,
   compareVersions,
   enrichClaudeAvailableVersions,
   enrichCodexAvailableVersions,
@@ -96,6 +97,54 @@ describe("core plugins", () => {
 
     expect(result.plugins[0].available_version).toBe("2.8.1");
     expect(result.plugins[0].update_status).toBe("newer");
+    rmSync(claudeHome, { recursive: true, force: true });
+  });
+
+  // 验证真实检查会先刷新 marketplace，避免本地清单滞后于远程版本。
+  it("refreshes Claude marketplaces before checking available plugin versions", async () => {
+    // claudeHome 存储测试专属 Claude home。
+    const claudeHome = join(tmpdir(), `visual-aicoding-claude-check-${process.pid}-${Date.now()}`);
+    mkdirSync(claudeHome, { recursive: true });
+    // calls 存储命令执行顺序与参数。
+    const calls = [];
+    // commandRunner 模拟 Claude CLI，并为插件列表返回稳定 JSON。
+    const commandRunner = async (bin, args, homeEnvKey, homeDir) => {
+      calls.push({ bin, args, homeEnvKey, homeDir });
+      return args.includes("list")
+        ? { stdout: JSON.stringify({ installed: [], available: [] }), stderr: "" }
+        : { stdout: "marketplace updated", stderr: "" };
+    };
+
+    await checkClaudePluginUpdates(claudeHome, commandRunner);
+
+    expect(calls.map((call) => call.args)).toEqual([
+      ["plugin", "marketplace", "update"],
+      ["plugin", "list", "--json", "--available"],
+    ]);
+    rmSync(claudeHome, { recursive: true, force: true });
+  });
+
+  // 验证 marketplace 暂时刷新失败时仍可返回本地缓存结果，并向界面提供诊断原因。
+  it("falls back to cached Claude marketplace data when refresh fails", async () => {
+    // claudeHome 存储测试专属 Claude home。
+    const claudeHome = join(tmpdir(), `visual-aicoding-claude-fallback-${process.pid}-${Date.now()}`);
+    mkdirSync(claudeHome, { recursive: true });
+    // callCount 存储当前模拟命令的调用次数，用于区分刷新与列表查询。
+    let callCount = 0;
+    // commandRunner 模拟 marketplace 网络失败后插件列表仍能正常读取。
+    const commandRunner = async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        throw new Error("network unavailable");
+      }
+      return { stdout: JSON.stringify({ installed: [], available: [] }), stderr: "" };
+    };
+
+    // result 存储降级后的插件检查结果。
+    const result = await checkClaudePluginUpdates(claudeHome, commandRunner);
+
+    expect(callCount).toBe(2);
+    expect(result.diagnostics).toContain("network unavailable");
     rmSync(claudeHome, { recursive: true, force: true });
   });
 

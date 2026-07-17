@@ -1,7 +1,7 @@
 {
   "name": "visual-aicoding",
   "private": true,
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "可视化管理 Claude Code 与 Codex 配置、插件和工具的 Electron 桌面应用",
   "productName": "VisualAICoding",
   "author": "imber",

@@ -676,10 +676,27 @@ async function runPluginCli(bin, args, homeEnvKey, homeDir) {
 }
 
 // checkClaudePluginUpdates 检查 Claude 已安装插件是否存在可用更新。
-// claudeHome 参数存储 Claude 配置根目录。
-export async function checkClaudePluginUpdates(claudeHome) {
+// claudeHome 参数存储 Claude 配置根目录，commandRunner 参数允许测试替换命令执行器。
+export async function checkClaudePluginUpdates(
+  claudeHome,
+  commandRunner = runPluginCliRaw
+) {
+  // marketplaceDiagnostics 存储远程 marketplace 刷新失败时的诊断信息，失败不阻断缓存检查。
+  let marketplaceDiagnostics = ''
+  try {
+    // 检查更新必须先刷新 marketplace，否则 Claude CLI 的 available 缺项时会读取过期本地清单并误判为最新版。
+    await commandRunner(
+      'claude',
+      ['plugin', 'marketplace', 'update'],
+      'CLAUDE_HOME',
+      claudeHome
+    )
+  } catch (error) {
+    marketplaceDiagnostics = `刷新 Claude marketplace 失败，已使用本地缓存: ${error.message}`
+  }
+
   // output 存储 Claude CLI 原始 stdout/stderr。
-  const output = await runPluginCliRaw(
+  const output = await commandRunner(
     'claude',
     ['plugin', 'list', '--json', '--available'],
     'CLAUDE_HOME',
@@ -688,7 +705,7 @@ export async function checkClaudePluginUpdates(claudeHome) {
   // result 存储 CLI 解析结果，随后用 marketplace 清单补齐 CLI 不返回的已安装插件版本。
   const result = parseClaudePluginUpdateCheckOutput(
     output.stdout,
-    output.stderr
+    [marketplaceDiagnostics, output.stderr].filter(Boolean).join('\n')
   )
   return enrichClaudeAvailableVersions(claudeHome, result)
 }
