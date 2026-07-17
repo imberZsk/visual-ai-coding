@@ -531,12 +531,12 @@ describe("PluginsPage", () => {
           name: "superpowers",
           marketplace: "superpowers-dev",
           current_version: "6.0.3",
-          available_version: "6.0.4",
+          available_version: "6.0.3",
           scope: "user",
           enabled: true,
           install_path: "/tmp/superpowers",
           last_updated: "",
-          update_status: "newer",
+          update_status: "same",
         },
       ],
     });
@@ -544,7 +544,8 @@ describe("PluginsPage", () => {
     await waitFor(() => {
       expect(Object.keys(useAppStore.getState().pluginPage.checkingPlugins)).toHaveLength(0);
     });
-    expect(await screen.findByText("发现新版本 6.0.4")).toBeInTheDocument();
+    expect(within(pluginCard).queryByText("当前已是最新版本")).not.toBeInTheDocument();
+    expect(await screen.findByText("当前已是最新版本")).toBeInTheDocument();
   });
 
   // 验证单个插件更新时只有该插件按钮进入 loading，其他插件按钮仍保持可操作。

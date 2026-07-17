@@ -1,5 +1,5 @@
 // 插件管理页：展示 Claude 与 Codex 插件版本状态，支持检查和拉取更新
-import { Alert, Switch } from "antd";
+import { Alert, message, Switch } from "antd";
 import { useEffect } from "react";
 import { revealInFinder } from "../api";
 import { PageHeader, Card, Badge, Button, EmptyState, PageShell } from "../components/ui";
@@ -17,12 +17,6 @@ interface ToolSectionState {
   error: string; // error 存储该工具检查失败的原因文本。
 }
 
-// PluginCheckFeedback 描述卡片内展示的单插件检查结果。
-interface PluginCheckFeedback {
-  phase: "ok" | "warning" | "err"; // phase 存储结果语义，用于选择提示颜色。
-  text: string; // text 存储检查结果文案。
-}
-
 // PluginToolSectionProps 定义单个工具插件区块需要的渲染参数。
 interface PluginToolSectionProps {
   title: string; // title 存储工具区块标题。
@@ -33,7 +27,6 @@ interface PluginToolSectionProps {
   onToggleEnabled: (plugin: ToolPluginInfo, enabled: boolean) => void; // onToggleEnabled 用于启用或禁用单个插件。
   isPluginUpdating: (plugin: ToolPluginInfo) => boolean; // isPluginUpdating 判断指定插件按钮是否进入 loading。
   isPluginChecking: (plugin: ToolPluginInfo) => boolean; // isPluginChecking 判断指定插件检查按钮是否进入 loading。
-  getPluginCheckResult: (plugin: ToolPluginInfo) => PluginCheckFeedback | undefined; // getPluginCheckResult 获取指定插件最近一次检查结果。
   isPluginToggling: (plugin: ToolPluginInfo) => boolean; // isPluginToggling 判断指定插件开关是否进入 loading。
 }
 
@@ -131,7 +124,6 @@ function PluginToolSection({
   onToggleEnabled,
   isPluginUpdating,
   isPluginChecking,
-  getPluginCheckResult,
   isPluginToggling,
 }: PluginToolSectionProps) {
   return (
@@ -185,9 +177,6 @@ function PluginToolSection({
               const lastUpdatedText = formatPluginLastUpdated(plugin.last_updated);
               // toggling 存储当前插件是否正在执行启停操作。
               const toggling = isPluginToggling(plugin);
-              // checkResult 存储当前插件最近一次明确的版本检查结果。
-              const checkResult = getPluginCheckResult(plugin);
-
             return (
               <Card
                 key={`${state.result?.tool}-${plugin.id}-${plugin.scope}-${plugin.install_path}`}
@@ -251,20 +240,6 @@ function PluginToolSection({
                     </Button>
                   </div>
                 </div>
-                {checkResult && (
-                  <Alert
-                    className="mt-3"
-                    message={checkResult.text}
-                    showIcon
-                    type={
-                      checkResult.phase === "err"
-                        ? "error"
-                        : checkResult.phase === "ok"
-                        ? "success"
-                        : "warning"
-                    }
-                  />
-                )}
               </Card>
             );
           })}
@@ -293,6 +268,31 @@ export default function PluginsPage({ tool }: PluginsPageProps) {
   const updatePlugin = useAppStore((state) => state.updatePlugin);
   // setPluginEnabled 存储启用或禁用指定工具插件的 store action。
   const setPluginEnabled = useAppStore((state) => state.setPluginEnabled);
+
+  // showPluginCheckMessage 执行单插件检查，并用 Ant Design toast 展示最终结果。
+  // pluginTool 参数存储插件所属工具，plugin 参数存储目标插件信息。
+  const showPluginCheckMessage = async (
+    pluginTool: "claude" | "codex",
+    plugin: ToolPluginInfo
+  ) => {
+    await checkSinglePluginUpdate(pluginTool, plugin);
+    // feedbackKey 存储目标插件在 store 检查结果映射中的唯一 key。
+    const feedbackKey = pluginUpdateKey(pluginTool, plugin);
+    // feedback 存储刚完成检查生成的提示语义与文本。
+    const feedback = useAppStore.getState().pluginPage.pluginCheckResults[feedbackKey];
+    if (!feedback) {
+      return;
+    }
+    if (feedback.phase === "ok") {
+      message.success(feedback.text);
+      return;
+    }
+    if (feedback.phase === "err") {
+      message.error(feedback.text);
+      return;
+    }
+    message.warning(feedback.text);
+  };
 
   useEffect(() => {
     // timer 存储首轮插件检查的延迟句柄，避免切到插件 tab 时同步启动 CLI 检查造成卡顿。
@@ -382,7 +382,7 @@ export default function PluginsPage({ tool }: PluginsPageProps) {
           void updatePlugin("claude", plugin);
         }}
         onCheckPlugin={(plugin) => {
-          void checkSinglePluginUpdate("claude", plugin);
+          void showPluginCheckMessage("claude", plugin);
         }}
         onToggleEnabled={(plugin, enabled) => {
           void setPluginEnabled("claude", plugin, enabled);
@@ -392,9 +392,6 @@ export default function PluginsPage({ tool }: PluginsPageProps) {
         }}
         isPluginChecking={(plugin) => {
           return Boolean(pluginPage.checkingPlugins[pluginUpdateKey("claude", plugin)]);
-        }}
-        getPluginCheckResult={(plugin) => {
-          return pluginPage.pluginCheckResults[pluginUpdateKey("claude", plugin)];
         }}
         isPluginToggling={(plugin) => {
           return Boolean(pluginPage.toggling[pluginUpdateKey("claude", plugin)]);
@@ -410,7 +407,7 @@ export default function PluginsPage({ tool }: PluginsPageProps) {
           void updatePlugin("codex", plugin);
         }}
         onCheckPlugin={(plugin) => {
-          void checkSinglePluginUpdate("codex", plugin);
+          void showPluginCheckMessage("codex", plugin);
         }}
         onToggleEnabled={(plugin, enabled) => {
           void setPluginEnabled("codex", plugin, enabled);
@@ -420,9 +417,6 @@ export default function PluginsPage({ tool }: PluginsPageProps) {
         }}
         isPluginChecking={(plugin) => {
           return Boolean(pluginPage.checkingPlugins[pluginUpdateKey("codex", plugin)]);
-        }}
-        getPluginCheckResult={(plugin) => {
-          return pluginPage.pluginCheckResults[pluginUpdateKey("codex", plugin)];
         }}
         isPluginToggling={(plugin) => {
           return Boolean(pluginPage.toggling[pluginUpdateKey("codex", plugin)]);
