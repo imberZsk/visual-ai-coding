@@ -1,5 +1,5 @@
 // 插件管理页：展示 Claude 与 Codex 插件版本状态，支持检查和拉取更新
-import { Alert, message, Switch } from "antd";
+import { Alert, App as AntApp, Switch } from "antd";
 import { useEffect } from "react";
 import { revealInFinder } from "../api";
 import { PageHeader, Card, Badge, Button, EmptyState, PageShell } from "../components/ui";
@@ -252,6 +252,8 @@ function PluginToolSection({
 
 // 插件管理页组件
 export default function PluginsPage({ tool }: PluginsPageProps) {
+  // messageApi 存储 Ant Design 上下文消息实例，确保 toast 继承当前明暗主题和全局居中配置。
+  const { message: messageApi } = AntApp.useApp();
   // claudeHome 存储 Claude 配置根目录。
   const claudeHome = useAppStore((state) => state.prefs?.claude_home || "");
   // codexHome 存储 Codex 配置根目录。
@@ -284,14 +286,14 @@ export default function PluginsPage({ tool }: PluginsPageProps) {
       return;
     }
     if (feedback.phase === "ok") {
-      message.success(feedback.text);
+      messageApi.success(feedback.text);
       return;
     }
     if (feedback.phase === "err") {
-      message.error(feedback.text);
+      messageApi.error(feedback.text);
       return;
     }
-    message.warning(feedback.text);
+    messageApi.warning(feedback.text);
   };
 
   useEffect(() => {

@@ -11,6 +11,9 @@ import './styles/index.css'
 // STARTUP_THEME_STORAGE_KEY 存储首屏脚本与 useTheme 共用的主题缓存 key。
 const STARTUP_THEME_STORAGE_KEY = 'visual-aicoding.theme'
 
+// ANTD_MESSAGE_CENTER_TOP 存储全局 Ant Design toast 的垂直中心位置；水平方向由 message 默认居中。
+const ANTD_MESSAGE_CENTER_TOP = '50%'
+
 // getStartupThemePreference 读取首屏缓存主题，供偏好加载前的 Ant Design Provider 使用。
 function getStartupThemePreference(): string {
   try {
@@ -124,7 +127,7 @@ function RootProviders() {
         components: componentThemeTokens,
       }}
     >
-      <AntApp>
+      <AntApp message={{ top: ANTD_MESSAGE_CENTER_TOP }}>
         <App />
       </AntApp>
     </ConfigProvider>

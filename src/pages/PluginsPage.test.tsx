@@ -1,8 +1,22 @@
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render as testingRender,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { App as AntApp } from "antd";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PluginsPage from "./PluginsPage";
 import { useAppStore } from "../store";
+
+// render 在 Ant Design App 上下文中渲染插件页，使测试使用真实 message API。
+// page 参数存储待渲染的插件页元素。
+function render(page: React.ReactElement) {
+  return testingRender(<AntApp message={{ top: "50%" }}>{page}</AntApp>);
+}
 
 // invokeMock 存储 Electron preload API 的测试替身，保留旧 command 形状便于断言迁移前后参数一致。
 const invokeMock = vi.fn();
@@ -546,6 +560,10 @@ describe("PluginsPage", () => {
     });
     expect(within(pluginCard).queryByText("当前已是最新版本")).not.toBeInTheDocument();
     expect(await screen.findByText("当前已是最新版本")).toBeInTheDocument();
+    // messageList 存储 Ant Design toast 的全局定位容器。
+    const messageList = document.querySelector(".ant-message-list");
+    expect(messageList).not.toBeNull();
+    expect(messageList).toHaveStyle("--notification-top: 50%");
   });
 
   // 验证单个插件更新时只有该插件按钮进入 loading，其他插件按钮仍保持可操作。
