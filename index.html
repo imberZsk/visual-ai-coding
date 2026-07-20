@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <style>
+      html.dark,
+      html.dark body,
+      html.dark #root {
+        background: rgb(18 18 17);
+      }
+    </style>
+    <script>
+      // 首屏主题脚本：在 React 与异步偏好加载前应用缓存主题，避免深色用户启动时先闪白。
+      // applyStartupTheme 根据启动缓存和系统偏好同步设置首屏主题类。
+      function applyStartupTheme() {
+        // storageKey 存储前端缓存主题偏好的 localStorage key。
+        const storageKey = "visual-aicoding.theme";
+        // root 存储 html 元素，首屏主题类必须挂在这里才能驱动 Tailwind 暗色模式。
+        const root = document.documentElement;
+        // cachedTheme 存储上次后端偏好同步到前端的主题模式。
+        let cachedTheme = null;
+
+        try {
+          cachedTheme = window.localStorage.getItem(storageKey);
+        } catch {
+          // WHY：部分 WebView 隐私/异常状态可能禁用 localStorage；启动主题仍应继续使用暗色兜底。
+        }
+
+        // mode 存储首屏可用的主题模式；没有缓存时优先暗色，避免已设置深色但后端偏好尚未读到时闪白。
+        const mode = ["light", "dark", "system"].includes(cachedTheme)
+          ? cachedTheme
+          : "dark";
+        // prefersDark 存储系统暗色偏好，仅在缓存为 system 时参与计算。
+        const prefersDark =
+          window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+        // shouldUseDark 存储首屏最终是否使用暗色背景。
+        const shouldUseDark = mode === "dark" || (mode === "system" && prefersDark);
+
+        root.classList.toggle("dark", shouldUseDark);
+        root.style.colorScheme = shouldUseDark ? "dark" : "light";
+      }
+
+      applyStartupTheme();
+    </script>
+    <title>Visual AICoding</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

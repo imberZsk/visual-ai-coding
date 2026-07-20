@@ -1,0 +1,276 @@
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import SkillsPage from "./SkillsPage";
+
+// invokeMock 存储 Electron preload API 的测试替身，保留旧 command 形状便于断言参数。
+const invokeMock = vi.fn();
+
+vi.mock("../store", () => ({
+  useAppStore: (selector: (state: unknown) => unknown) =>
+    selector({
+      prefs: {
+        claude_home: "/Users/test/.claude",
+        codex_home: "/Users/test/.codex",
+        vscode_path: "code",
+      },
+    }),
+}));
+
+describe("SkillsPage", () => {
+  beforeEach(() => {
+    // innerHeight 模拟常见桌面窗口高度，使响应式分页初始为每页 5 条。
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 800 });
+    window.api = {
+      listSkills: (payload: { claudeHome: string; codexHome: string }) =>
+        invokeMock("list_skills", payload),
+      openInVscode: (payload: { vscodePath: string; target: string }) =>
+        invokeMock("open_in_vscode", payload),
+    } as Window["api"];
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue({
+      skills: [
+        {
+          name: "openai-docs",
+          description: "Use when the user asks how to build with OpenAI products.",
+          source: "Codex 系统",
+          tool: "codex",
+          plugin: "",
+          path: "/Users/test/.codex/skills/.system/openai-docs/SKILL.md",
+        },
+        {
+          name: "brainstorming",
+          description: "Explores user intent, requirements and design before implementation.",
+          source: "Codex 插件",
+          tool: "codex",
+          plugin: "superpowers@superpowers-dev",
+          path: "/Users/test/.codex/plugins/cache/superpowers-dev/superpowers/6.0.3/skills/brainstorming/SKILL.md",
+        },
+        {
+          name: "document-review",
+          description: "Reviews documents and proposes edits.",
+          source: "Claude 用户",
+          tool: "claude",
+          plugin: "",
+          path: "/Users/test/.claude/skills/document-review/SKILL.md",
+        },
+      ],
+      diagnostics: "",
+    });
+  });
+
+  // 验证技能页默认展示 Codex 分类，且“全部”分类排列在最后。
+  it("defaults to Codex and puts the all category last", async () => {
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+    expect(screen.queryByText("document-review")).not.toBeInTheDocument();
+
+    // categoryLabels 存储分段控件从左到右的分类标签。
+    const categoryLabels = Array.from(document.querySelectorAll(".ant-segmented-item-label"))
+      .map((element) => element.textContent);
+    expect(categoryLabels).toEqual(["Codex", "Claude", "Agents", "全部"]);
+    expect(screen.getByText("Codex", { selector: ".ant-segmented-item-selected .ant-segmented-item-label" }))
+      .toBeInTheDocument();
+  });
+
+  // 验证技能页会展示可用 skill 的用途、来源、插件归属与本地路径，帮助用户理解当前可用能力。
+  it("renders available skills with descriptions and origins", async () => {
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+    expect(screen.getByText("brainstorming")).toBeInTheDocument();
+    expect(
+      screen.getByText("Use when the user asks how to build with OpenAI products.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Codex 系统")).toBeInTheDocument();
+    expect(screen.getByText("superpowers@superpowers-dev")).toBeInTheDocument();
+    expect(screen.getByText(/openai-docs\/SKILL\.md/)).toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledWith("list_skills", {
+      claudeHome: "/Users/test/.claude",
+      codexHome: "/Users/test/.codex",
+    });
+  });
+
+  // 验证技能页使用 Ant Design Table 展示信息，避免继续维护手写 role/grid 表格。
+  it("uses an Ant Design directory table with clear columns", async () => {
+    render(<SkillsPage />);
+
+    // skillName 存储首个 skill 名称节点，用于向上定位 Ant Design Table 容器。
+    const skillName = await screen.findByText("openai-docs");
+    // table 存储 Ant Design Table 根节点，用于确认表格能力来自 antd。
+    const table = skillName.closest(".ant-table");
+
+    expect(table).toBeInTheDocument();
+    expect(within(table as HTMLElement).getByText("Skill")).toBeInTheDocument();
+    expect(within(table as HTMLElement).getByText("用途")).toBeInTheDocument();
+    expect(within(table as HTMLElement).getByText("来源")).toBeInTheDocument();
+    expect(within(table as HTMLElement).getByText("路径")).toBeInTheDocument();
+  });
+
+  // 验证路径列改用 Ant Design Typography 省略能力承接长路径展示。
+  it("renders long paths with Ant Design Typography ellipsis", async () => {
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("brainstorming")).toBeInTheDocument();
+
+    // pathNode 存储某条长路径文本节点，用于确认路径文本允许断词与行数控制。
+    const pathNode = screen.getByText(
+      "/Users/test/.codex/plugins/cache/superpowers-dev/superpowers/6.0.3/skills/brainstorming/SKILL.md"
+    );
+
+    expect(pathNode).toHaveClass("skill-path-text");
+    expect(pathNode.closest(".ant-typography")).toBeInTheDocument();
+    expect(pathNode.closest(".ant-table")).toBeInTheDocument();
+  });
+
+  // 验证点击 Skill 行的 VSCode 按钮会用配置的 VSCode CLI 打开对应 SKILL.md 文件。
+  it("opens a skill file in VSCode", async () => {
+    // user 存储用户交互模拟器，用于点击 VSCode 打开按钮。
+    const user = userEvent.setup();
+
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+
+    // rows 存储技能清单中的数据行，第一行是表头，所以取包含 openai-docs 的行。
+    const rows = screen.getAllByRole("row");
+    // targetRow 存储 openai-docs 对应的数据行。
+    const targetRow = rows.find((row) => within(row).queryByText("openai-docs"));
+
+    if (!targetRow) {
+      throw new Error("未找到 openai-docs 对应行");
+    }
+
+    await user.click(within(targetRow).getByRole("button", { name: "VSCode" }));
+
+    expect(invokeMock).toHaveBeenCalledWith("open_in_vscode", {
+      vscodePath: "code",
+      target: "/Users/test/.codex/skills/.system/openai-docs/SKILL.md",
+    });
+  });
+
+  // 验证 VSCode 打开入口使用图标按钮，视觉上与 visual-worktree 的操作按钮保持一致。
+  it("renders the VSCode action as an icon button", async () => {
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+
+    // button 存储第一个 VSCode 图标按钮，用于确认其仍保留可访问名称。
+    const button = screen.getAllByRole("button", { name: "VSCode" })[0];
+    expect(within(button).getByRole("img", { name: "vscode" })).toBeInTheDocument();
+    expect(button).toHaveClass("ant-btn-icon-only");
+    expect(button).toHaveClass("ant-btn-text");
+    expect(button).not.toHaveTextContent("VSCode");
+  });
+
+  // 验证刷新按钮在重新加载 skill 时使用 Ant Design Button 的内置 loading。
+  it("shows Ant Design button loading while refreshing skills", async () => {
+    // user 存储用户交互模拟器，用于点击刷新按钮。
+    const user = userEvent.setup();
+
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+
+    invokeMock.mockReturnValue(new Promise(() => undefined));
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+
+    // refreshButton 存储进入刷新状态的按钮，用于确认 loading 图标存在且按钮禁用。
+    const refreshButton = screen.getByRole("button", { name: "刷新" });
+    await waitFor(() => expect(refreshButton).toBeDisabled());
+    expect(refreshButton.querySelector(".ant-btn-loading-icon")).toBeInTheDocument();
+    expect(refreshButton.querySelector(".anticon-loading")).toBeInTheDocument();
+    expect(within(refreshButton).queryByTestId("loading-icon")).not.toBeInTheDocument();
+  });
+
+  // 验证搜索框可按描述过滤 skill，用户能快速定位自己关心的能力。
+  it("filters skills by name and description", async () => {
+    // user 存储用户交互模拟器，用于输入搜索关键词。
+    const user = userEvent.setup();
+
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("搜索 skill、用途、来源"), "design");
+
+    await waitFor(() => {
+      expect(screen.queryByText("openai-docs")).not.toBeInTheDocument();
+      expect(screen.getByText("brainstorming")).toBeInTheDocument();
+    });
+  });
+
+  // 验证工具分类可与搜索条件组合筛选，并可一键恢复完整清单。
+  it("filters skills by tool category and clears active filters", async () => {
+    // user 存储用户交互模拟器，用于切换分类并清除筛选。
+    const user = userEvent.setup();
+
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+
+    await user.click(screen.getByText("Claude", { selector: ".ant-segmented-item-label" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("document-review")).toBeInTheDocument();
+      expect(screen.queryByText("openai-docs")).not.toBeInTheDocument();
+      expect(screen.getByText("共 3 个 Skill，匹配 1 个")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "清除筛选" }));
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+    expect(screen.getByText("brainstorming")).toBeInTheDocument();
+    expect(screen.queryByText("document-review")).not.toBeInTheDocument();
+  });
+
+  // 验证来源下拉框按扫描结果动态分类，并能精确筛选系统技能。
+  it("filters skills by dynamic source category", async () => {
+    // user 存储用户交互模拟器，用于操作来源下拉框。
+    const user = userEvent.setup();
+
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("openai-docs")).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "来源筛选" }));
+    await user.click(await screen.findByText("Codex 系统", { selector: ".ant-select-item-option-content" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("openai-docs")).toBeInTheDocument();
+      expect(screen.queryByText("brainstorming")).not.toBeInTheDocument();
+      expect(screen.queryByText("document-review")).not.toBeInTheDocument();
+    });
+  });
+
+  // 验证 Ant Design Table 根据窗口高度调整分页条数，并在缩放后展示更多技能。
+  it("uses responsive Ant Design table pagination", async () => {
+    // responsiveSkills 存储用于触发多页展示的 Codex 技能测试数据。
+    const responsiveSkills = Array.from({ length: 8 }, (_value, index) => ({
+      name: `codex-skill-${index + 1}`,
+      description: `Codex skill ${index + 1}`,
+      source: "Codex 用户",
+      tool: "codex",
+      plugin: "",
+      path: `/Users/test/.codex/skills/codex-skill-${index + 1}/SKILL.md`,
+    }));
+    invokeMock.mockResolvedValue({ skills: responsiveSkills, diagnostics: "" });
+
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("codex-skill-1")).toBeInTheDocument();
+    expect(screen.getByText("codex-skill-5")).toBeInTheDocument();
+    expect(screen.queryByText("codex-skill-6")).not.toBeInTheDocument();
+    expect(document.querySelector(".ant-pagination")).toBeInTheDocument();
+
+    act(() => {
+      window.innerHeight = 1200;
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("codex-skill-8")).toBeInTheDocument();
+      expect(document.querySelector(".ant-pagination")).not.toBeInTheDocument();
+    });
+  });
+});
