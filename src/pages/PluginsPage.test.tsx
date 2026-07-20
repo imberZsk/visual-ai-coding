@@ -566,6 +566,78 @@ describe("PluginsPage", () => {
     expect(messageList).toHaveStyle("--notification-top: 50%");
   });
 
+  // 验证单插件存在新版本时使用 warning toast 展示可用版本。
+  it("shows a warning toast when a plugin update is available", async () => {
+    // user 存储用户交互模拟器，用于点击卡片内的检查按钮。
+    const user = userEvent.setup();
+
+    render(<PluginsPage />);
+
+    expect(await screen.findByText("superpowers@superpowers-dev")).toBeInTheDocument();
+
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "check_claude_plugin_updates") {
+        return Promise.resolve({
+          tool: "claude",
+          raw_output: "{}",
+          diagnostics: "",
+          plugins: [
+            {
+              id: "superpowers@superpowers-dev",
+              name: "superpowers",
+              marketplace: "superpowers-dev",
+              current_version: "6.0.3",
+              available_version: "6.0.4",
+              scope: "user",
+              enabled: true,
+              install_path: "/tmp/superpowers",
+              last_updated: "",
+              update_status: "newer",
+            },
+          ],
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    // pluginCard 存储目标插件卡片，用于定位卡片内的检查按钮。
+    const pluginCard = getPluginCard("superpowers@superpowers-dev");
+    // checkButton 存储目标插件卡片内的只读检查按钮。
+    const checkButton = within(pluginCard).getByRole("button", { name: "检查更新" });
+
+    await user.click(checkButton);
+
+    expect(await screen.findByText("发现新版本 6.0.4")).toBeInTheDocument();
+    expect(document.querySelector(".ant-message-warning")).not.toBeNull();
+  });
+
+  // 验证单插件检查失败时使用 error toast 展示具体错误。
+  it("shows an error toast when a plugin update check fails", async () => {
+    // user 存储用户交互模拟器，用于点击卡片内的检查按钮。
+    const user = userEvent.setup();
+
+    render(<PluginsPage />);
+
+    expect(await screen.findByText("superpowers@superpowers-dev")).toBeInTheDocument();
+
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "check_claude_plugin_updates") {
+        return Promise.reject(new Error("network unavailable"));
+      }
+      return Promise.resolve([]);
+    });
+
+    // pluginCard 存储目标插件卡片，用于定位卡片内的检查按钮。
+    const pluginCard = getPluginCard("superpowers@superpowers-dev");
+    // checkButton 存储目标插件卡片内的只读检查按钮。
+    const checkButton = within(pluginCard).getByRole("button", { name: "检查更新" });
+
+    await user.click(checkButton);
+
+    expect(await screen.findByText("检查失败：Error: network unavailable")).toBeInTheDocument();
+    expect(document.querySelector(".ant-message-error")).not.toBeNull();
+  });
+
   // 验证单个插件更新时只有该插件按钮进入 loading，其他插件按钮仍保持可操作。
   it("shows loading only on the plugin update button being updated", async () => {
     invokeMock.mockImplementation((command: string) => {

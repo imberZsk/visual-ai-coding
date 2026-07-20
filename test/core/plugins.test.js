@@ -123,7 +123,7 @@ describe("core plugins", () => {
       JSON.stringify({ name: "development-tools", version: "1.8.2" }),
     );
 
-    // result 存储插件自身 manifest 补齐后的检查结果。
+    // result 存储 CLI 返回旧版本后由插件自身 manifest 覆盖的检查结果。
     const result = enrichClaudeAvailableVersions(claudeHome, {
       tool: "claude",
       raw_output: "{}",
@@ -134,7 +134,7 @@ describe("core plugins", () => {
           name: "development-tools",
           marketplace: "cyt-plugins",
           current_version: "1.8.1",
-          available_version: "",
+          available_version: "1.8.0",
           scope: "user",
           enabled: true,
           install_path: "/tmp/development-tools",
