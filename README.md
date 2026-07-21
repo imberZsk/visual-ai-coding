@@ -54,4 +54,4 @@ pnpm test            # 运行全部前端 / Node / Electron IPC 测试
 
 ## 平台
 
-当前定位 macOS（用到 `open -R` 等 macOS 专有能力）。
+支持 macOS Apple Silicon（arm64）和 Windows（x64）。macOS 提供 DMG 安装包，Windows 提供安装版和便携版。
