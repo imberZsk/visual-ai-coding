@@ -15,13 +15,13 @@
 
 ## 功能
 
-| 页面 | 用途 |
-| --- | --- |
-| 概览 | 探测 Claude Code / Codex CLI 安装状态与版本，配置目录快速入口 |
-| Claude Code | 可视化编辑 `settings.json`，编辑 `CLAUDE.md`，只读查看插件 / 市场清单 |
-| Codex | 可视化编辑 `config.toml`，编辑 `AGENTS.md`、`hooks.json`，只读查看 `version.json` |
-| 插件 | 展示 Claude / Codex 插件当前版本、可用版本与更新状态，支持拉取更新 |
-| 应用设置 | 主题切换、VSCode 路径、配置目录自定义 |
+| 页面        | 用途                                                                              |
+| ----------- | --------------------------------------------------------------------------------- |
+| 概览        | 探测 Claude Code / Codex CLI 安装状态与版本，配置目录快速入口                     |
+| Claude Code | 可视化编辑 `settings.json`，编辑 `CLAUDE.md`，只读查看插件 / 市场清单             |
+| Codex       | 可视化编辑 `config.toml`，编辑 `AGENTS.md`、`hooks.json`，只读查看 `version.json` |
+| 插件        | 展示 Claude / Codex 插件当前版本、可用版本与更新状态，支持拉取更新                |
+| 应用设置    | 主题切换、VSCode 路径、配置目录自定义                                             |
 
 应用偏好持久化到 `~/.visualAiCoding/preferences.json`。
 
@@ -54,4 +54,4 @@ pnpm test            # 运行全部前端 / Node / Electron IPC 测试
 
 ## 平台
 
-当前定位 macOS（用到 `open -R` 等 macOS 专有能力）。
+支持 macOS Apple Silicon（arm64）和 Windows（x64）。macOS 提供 DMG 安装包，Windows 提供安装版和便携版。
