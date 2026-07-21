@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.2 - 2026-07-21
+
+### 修复
+
+- 兼容 `electron-updater` 的 CommonJS 导出结构，并在更新模块加载失败时安全降级，修复打包应用启动时报 `autoDownload` 属性错误的问题。
+- 应用展示名改为 `Visual Ai Coding`，Release 安装说明补充 `sudo`，公开资产严格限制为 macOS DMG、Windows 安装版和便携版三个用户安装包。
+
 ## 0.16.1 - 2026-07-17
 
 ### 修复

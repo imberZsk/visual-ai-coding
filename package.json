@@ -1,9 +1,9 @@
 {
   "name": "visual-aicoding",
   "private": true,
-  "version": "0.16.1",
+  "version": "0.16.2",
   "description": "可视化管理 Claude Code 与 Codex 配置、插件和工具的 Electron 桌面应用",
-  "productName": "VisualAICoding",
+  "productName": "Visual Ai Coding",
   "author": "imber",
   "license": "MIT",
   "packageManager": "pnpm@11.13.0",
@@ -93,7 +93,7 @@
   },
   "build": {
     "appId": "com.imber.visual-aicoding",
-    "productName": "VisualAICoding",
+    "productName": "Visual Ai Coding",
     "publish": [
       {
         "provider": "github",
@@ -113,6 +113,7 @@
     ],
     "mac": {
       "icon": "build/icon.icns",
+      "artifactName": "VisualAICoding-${version}-${arch}.${ext}",
       "target": [
         {
           "target": "dmg",
@@ -127,7 +128,7 @@
       "identity": null
     },
     "dmg": {
-      "title": "VisualAICoding ${version}"
+      "title": "Visual Ai Coding ${version}"
     },
     "win": {
       "target": [

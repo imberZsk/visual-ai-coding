@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { registerIpcHandlers } from './ipcHandlers.js'
 import { warmLoginPath } from '../src/core/util.js'
-import { registerAppUpdater } from './appUpdater.js'
+import { loadAutoUpdater, registerAppUpdater } from './appUpdater.js'
 
 // __dirname 存储当前文件目录；ESM 中需从 import.meta.url 推导。
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -123,9 +123,10 @@ async function runSmokeCheck(win) {
 
 registerIpcHandlers(ipcMain, { shell })
 // appUpdater 存储打包环境的真实更新器；开发和测试不加载 Electron 更新模块。
-const appUpdater = app.isPackaged
-  ? (await import('electron-updater')).autoUpdater
-  : {}
+const appUpdater = await loadAutoUpdater(
+  () => import('electron-updater'),
+  app.isPackaged
+)
 registerAppUpdater(ipcMain, appUpdater, app.isPackaged)
 
 app.whenReady().then(async () => {
