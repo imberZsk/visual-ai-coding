@@ -23,6 +23,13 @@ function buildApiMock() {
     updateCodexMarketplace: vi.fn().mockResolvedValue('ok'),
     updateCodexPlugin: vi.fn().mockResolvedValue('ok'),
     setPluginEnabled: vi.fn().mockResolvedValue('ok'),
+    listPluginGitBranches: vi.fn().mockResolvedValue({ branches: [] }),
+    switchPluginGitBranch: vi.fn().mockResolvedValue({ branches: [] }),
+    listQuotaAccounts: vi.fn().mockResolvedValue([]),
+    saveQuotaAccount: vi.fn().mockResolvedValue({ id: 'quota-1' }),
+    deleteQuotaAccount: vi.fn().mockResolvedValue(undefined),
+    queryQuotaAccount: vi.fn().mockResolvedValue({ remaining: 10 }),
+    discoverQuotaModels: vi.fn().mockResolvedValue(['gpt-5.4']),
     detectTools: vi.fn().mockResolvedValue([]),
     checkToolLatestVersion: vi
       .fn()
@@ -42,6 +49,39 @@ describe('api 后端命令封装层', () => {
     apiMock = buildApiMock()
     // 将替身挂到 window.api，模拟 preload 已初始化。
     ;(window as unknown as { api: unknown }).api = apiMock
+  })
+
+  // 验证额度管理 API 会把账户数据与 ID 转发给 preload 安全桥。
+  it('额度管理方法转发到 preload', async () => {
+    // input 存储待保存的额度账户表单值。
+    const input: Parameters<typeof api.saveQuotaAccount>[0] = {
+      id: '',
+      name: 'OpenAI',
+      provider: 'openai',
+      models: ['gpt-5.4'],
+      base_url: '',
+      quota_path: '',
+      endpoint: '',
+      quota_limit: 100,
+      unit: 'USD',
+      api_key: 'secret',
+    }
+    await api.listQuotaAccounts()
+    await api.saveQuotaAccount(input)
+    await api.queryQuotaAccount('quota-1')
+    await api.deleteQuotaAccount('quota-1')
+    await api.discoverQuotaModels({
+      base_url: 'https://api.example.com/v1',
+      api_key: 'secret',
+    })
+    expect(apiMock.listQuotaAccounts).toHaveBeenCalledTimes(1)
+    expect(apiMock.saveQuotaAccount).toHaveBeenCalledWith(input)
+    expect(apiMock.queryQuotaAccount).toHaveBeenCalledWith('quota-1')
+    expect(apiMock.deleteQuotaAccount).toHaveBeenCalledWith('quota-1')
+    expect(apiMock.discoverQuotaModels).toHaveBeenCalledWith({
+      base_url: 'https://api.example.com/v1',
+      api_key: 'secret',
+    })
   })
 
   afterEach(() => {
@@ -165,6 +205,27 @@ describe('api 后端命令封装层', () => {
     }
     await api.setPluginEnabled(payload)
     expect(apiMock.setPluginEnabled).toHaveBeenCalledWith(payload)
+  })
+
+  // 验证插件 Git 分支查询与切换会透传完整仓库定位参数。
+  it('插件 Git 分支操作透传参数', async () => {
+    // payload 存储定位插件 Git 仓库所需的信息。
+    const payload = {
+      tool: 'claude' as const,
+      pluginId: 'plugin@mk',
+      scope: 'user',
+      marketplace: 'mk',
+      installPath: '/tmp/plugin',
+      claudeHome: '/home/.claude',
+      codexHome: '/home/.codex',
+    }
+    await api.listPluginGitBranches(payload)
+    await api.switchPluginGitBranch({ ...payload, branch: 'feature/demo' })
+    expect(apiMock.listPluginGitBranches).toHaveBeenCalledWith(payload)
+    expect(apiMock.switchPluginGitBranch).toHaveBeenCalledWith({
+      ...payload,
+      branch: 'feature/demo',
+    })
   })
 
   // 验证工具探测与版本查询/更新按参数转发。

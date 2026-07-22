@@ -21,6 +21,13 @@ const IPC = {
   UPDATE_CODEX_PLUGIN: 'update-codex-plugin',
   UPDATE_CODEX_MARKETPLACE: 'update-codex-marketplace',
   SET_PLUGIN_ENABLED: 'set-plugin-enabled',
+  LIST_PLUGIN_GIT_BRANCHES: 'list-plugin-git-branches',
+  SWITCH_PLUGIN_GIT_BRANCH: 'switch-plugin-git-branch',
+  LIST_QUOTA_ACCOUNTS: 'list-quota-accounts',
+  SAVE_QUOTA_ACCOUNT: 'save-quota-account',
+  DELETE_QUOTA_ACCOUNT: 'delete-quota-account',
+  QUERY_QUOTA_ACCOUNT: 'query-quota-account',
+  DISCOVER_QUOTA_MODELS: 'discover-quota-models',
   LIST_SKILLS: 'list-skills',
   CHECK_TOOL_LATEST_VERSION: 'check-tool-latest-version',
   UPDATE_TOOL_CLI: 'update-tool-cli',
@@ -93,6 +100,26 @@ const api = {
   // setPluginEnabled 启用或禁用单个插件。
   setPluginEnabled: (payload) =>
     ipcRenderer.invoke(IPC.SET_PLUGIN_ENABLED, payload),
+  // listPluginGitBranches 异步刷新并读取插件源码仓库分支。
+  listPluginGitBranches: (payload) =>
+    ipcRenderer.invoke(IPC.LIST_PLUGIN_GIT_BRANCHES, payload),
+  // switchPluginGitBranch 异步切换插件源码仓库分支。
+  switchPluginGitBranch: (payload) =>
+    ipcRenderer.invoke(IPC.SWITCH_PLUGIN_GIT_BRANCH, payload),
+  // listQuotaAccounts 读取不含凭据明文的模型额度账户。
+  listQuotaAccounts: () => ipcRenderer.invoke(IPC.LIST_QUOTA_ACCOUNTS),
+  // saveQuotaAccount 新增或更新模型额度账户。
+  saveQuotaAccount: (payload) =>
+    ipcRenderer.invoke(IPC.SAVE_QUOTA_ACCOUNT, payload),
+  // deleteQuotaAccount 删除模型额度账户。
+  deleteQuotaAccount: (accountId) =>
+    ipcRenderer.invoke(IPC.DELETE_QUOTA_ACCOUNT, accountId),
+  // queryQuotaAccount 异步查询单个模型账户额度。
+  queryQuotaAccount: (accountId) =>
+    ipcRenderer.invoke(IPC.QUERY_QUOTA_ACCOUNT, accountId),
+  // discoverQuotaModels 通过 OpenAI 兼容 Base URL 读取模型列表。
+  discoverQuotaModels: (payload) =>
+    ipcRenderer.invoke(IPC.DISCOVER_QUOTA_MODELS, payload),
   // listSkills 扫描 Skill 列表。
   listSkills: (payload) => ipcRenderer.invoke(IPC.LIST_SKILLS, payload),
   // checkToolLatestVersion 查询工具最新版。

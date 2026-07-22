@@ -1,116 +1,144 @@
 // 插件管理页：展示 Claude 与 Codex 插件版本状态，支持检查和拉取更新
-import { Alert, App as AntApp, Switch } from "antd";
-import { useEffect } from "react";
-import { revealInFinder } from "../api";
-import { PageHeader, Card, Badge, Button, EmptyState, PageShell } from "../components/ui";
-import { useAppStore } from "../store";
+import { Alert, App as AntApp, Select, Switch } from 'antd'
+import { useEffect } from 'react'
+import { revealInFinder } from '../api'
+import {
+  PageHeader,
+  Card,
+  Badge,
+  Button,
+  EmptyState,
+  PageShell,
+} from '../components/ui'
+import { useAppStore } from '../store'
 import type {
   PluginUpdateCheckResult,
   PluginUpdateStatus,
   ToolPluginInfo,
-} from "../types";
+} from '../types'
 
 // ToolSectionState 描述单个工具区块的检查结果。
 interface ToolSectionState {
-  loading: boolean; // loading 标记该工具插件检查是否进行中。
-  result: PluginUpdateCheckResult | null; // result 存储该工具最新一次检查结果。
-  error: string; // error 存储该工具检查失败的原因文本。
+  loading: boolean // loading 标记该工具插件检查是否进行中。
+  result: PluginUpdateCheckResult | null // result 存储该工具最新一次检查结果。
+  error: string // error 存储该工具检查失败的原因文本。
 }
 
 // PluginToolSectionProps 定义单个工具插件区块需要的渲染参数。
 interface PluginToolSectionProps {
-  title: string; // title 存储工具区块标题。
-  state: ToolSectionState; // state 存储工具区块的加载、结果与错误状态。
-  onRefresh: () => void; // onRefresh 用于重新检查当前工具插件状态。
-  onCheckPlugin: (plugin: ToolPluginInfo) => void; // onCheckPlugin 用于只读检查单个插件是否有新版本。
-  onUpdate: (plugin: ToolPluginInfo) => void; // onUpdate 用于触发单个插件更新。
-  onToggleEnabled: (plugin: ToolPluginInfo, enabled: boolean) => void; // onToggleEnabled 用于启用或禁用单个插件。
-  isPluginUpdating: (plugin: ToolPluginInfo) => boolean; // isPluginUpdating 判断指定插件按钮是否进入 loading。
-  isPluginChecking: (plugin: ToolPluginInfo) => boolean; // isPluginChecking 判断指定插件检查按钮是否进入 loading。
-  isPluginToggling: (plugin: ToolPluginInfo) => boolean; // isPluginToggling 判断指定插件开关是否进入 loading。
+  title: string // title 存储工具区块标题。
+  state: ToolSectionState // state 存储工具区块的加载、结果与错误状态。
+  onRefresh: () => void // onRefresh 用于重新检查当前工具插件状态。
+  onCheckPlugin: (plugin: ToolPluginInfo) => void // onCheckPlugin 用于只读检查单个插件是否有新版本。
+  onUpdate: (plugin: ToolPluginInfo) => void // onUpdate 用于触发单个插件更新。
+  onToggleEnabled: (plugin: ToolPluginInfo, enabled: boolean) => void // onToggleEnabled 用于启用或禁用单个插件。
+  isPluginUpdating: (plugin: ToolPluginInfo) => boolean // isPluginUpdating 判断指定插件按钮是否进入 loading。
+  isPluginChecking: (plugin: ToolPluginInfo) => boolean // isPluginChecking 判断指定插件检查按钮是否进入 loading。
+  isPluginToggling: (plugin: ToolPluginInfo) => boolean // isPluginToggling 判断指定插件开关是否进入 loading。
+  onLoadBranches: (plugin: ToolPluginInfo) => void // onLoadBranches 用于异步刷新插件 Git 分支。
+  onSwitchBranch: (plugin: ToolPluginInfo, branch: string) => void // onSwitchBranch 用于异步切换插件 Git 分支。
+  branchState: (plugin: ToolPluginInfo) => {
+    loading: boolean
+    switching: boolean
+    current: string
+    branches: string[]
+    error: string
+  } // branchState 返回插件分支选择器状态。
 }
 
 // PluginsPageProps 描述插件页当前所属的一级工具。
 interface PluginsPageProps {
-  tool?: "claude" | "codex"; // tool 存储需要展示和检查插件的工具作用域，省略时保留汇总视图兼容性。
+  tool?: 'claude' | 'codex' // tool 存储需要展示和检查插件的工具作用域，省略时保留汇总视图兼容性。
 }
 
 // INITIAL_PLUGIN_CHECK_DELAY_MS 存储插件页首次检查延迟时间，用于先让 tab 切换动画完成再启动 CLI 检查。
-const INITIAL_PLUGIN_CHECK_DELAY_MS = 220;
+const INITIAL_PLUGIN_CHECK_DELAY_MS = 220
 
 // 根据插件更新状态返回界面文案。
 // status 为后端计算出的更新状态。
 function updateStatusLabel(status: PluginUpdateStatus): string {
-  if (status === "newer") {
-    return "可更新";
+  if (status === 'newer') {
+    return '可更新'
   }
-  if (status === "same") {
-    return "已最新";
+  if (status === 'same') {
+    return '已最新'
   }
-  if (status === "different") {
-    return "版本不同";
+  if (status === 'different') {
+    return '版本不同'
   }
-  return "未知";
+  return '未知'
 }
 
 // 根据插件更新状态返回徽章色调。
 // status 为后端计算出的更新状态。
 function updateStatusTone(
   status: PluginUpdateStatus
-): "neutral" | "success" | "warning" | "info" {
-  if (status === "newer") {
-    return "warning";
+): 'neutral' | 'success' | 'warning' | 'info' {
+  if (status === 'newer') {
+    return 'warning'
   }
-  if (status === "same") {
-    return "success";
+  if (status === 'same') {
+    return 'success'
   }
-  if (status === "different") {
-    return "info";
+  if (status === 'different') {
+    return 'info'
   }
-  return "neutral";
+  return 'neutral'
 }
 
 // pluginUpdateKey 生成单插件更新任务 key，用工具和安装信息区分同名插件。
 // tool 为插件所属工具，plugin 为后端返回的插件信息。
-function pluginUpdateKey(tool: "claude" | "codex", plugin: ToolPluginInfo): string {
-  return [tool, plugin.id, plugin.scope, plugin.install_path].join("::");
+function pluginUpdateKey(
+  tool: 'claude' | 'codex',
+  plugin: ToolPluginInfo
+): string {
+  return [tool, plugin.id, plugin.scope, plugin.install_path].join('::')
+}
+
+// pluginBranchKey 生成 marketplace 级分支状态 key，同市场插件共享当前分支。
+// tool 为插件所属工具，plugin 为后端返回的插件信息。
+function pluginBranchKey(
+  tool: 'claude' | 'codex',
+  plugin: ToolPluginInfo
+): string {
+  return [tool, plugin.marketplace].join('::')
 }
 
 // formatPluginLastUpdated 将 CLI 返回的原始更新时间转换为中国时区的中文展示文本。
 // lastUpdated 为后端透传的最近更新时间，通常是 ISO 字符串。
 function formatPluginLastUpdated(lastUpdated: string): string {
   // trimmed 存储去除首尾空白后的原始更新时间。
-  const trimmed = lastUpdated.trim();
+  const trimmed = lastUpdated.trim()
 
   if (!trimmed) {
-    return "—";
+    return '—'
   }
 
   // date 存储根据 CLI 原始时间解析出的绝对时间。
-  const date = new Date(trimmed);
+  const date = new Date(trimmed)
 
   if (Number.isNaN(date.getTime())) {
-    return trimmed;
+    return trimmed
   }
 
   // parts 存储中国时区拆分后的时间片段，避免不同浏览器直接 format 时标点不一致。
-  const parts = new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(date);
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
   // values 存储时间片段类型到展示值的映射。
   const values = parts.reduce<Record<string, string>>((accumulator, part) => {
-    accumulator[part.type] = part.value;
-    return accumulator;
-  }, {});
+    accumulator[part.type] = part.value
+    return accumulator
+  }, {})
 
-  return `${values.year}年${values.month}月${values.day}日 ${values.hour}:${values.minute}:${values.second}`;
+  return `${values.year}年${values.month}月${values.day}日 ${values.hour}:${values.minute}:${values.second}`
 }
 
 // 渲染单个工具的插件更新区块。
@@ -125,6 +153,9 @@ function PluginToolSection({
   isPluginUpdating,
   isPluginChecking,
   isPluginToggling,
+  onLoadBranches,
+  onSwitchBranch,
+  branchState,
 }: PluginToolSectionProps) {
   return (
     <section className="mb-6">
@@ -138,35 +169,43 @@ function PluginToolSection({
       {state.error && (
         <Alert
           className="mb-3"
-          description={<pre className="m-0 max-h-32 overflow-auto whitespace-pre-wrap font-mono">{state.error}</pre>}
+          description={
+            <pre className="m-0 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
+              {state.error}
+            </pre>
+          }
           message={`${title}检查失败`}
           showIcon
           type="error"
         />
       )}
 
-      {state.result?.diagnostics && !state.error && state.result.plugins.length === 0 && (
-        <Alert
-          className="mb-3"
-          description={
-            <pre className="m-0 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
-              {state.result.diagnostics}
-            </pre>
-          }
-          message={`${title}诊断`}
-          showIcon
-          type="warning"
-        />
-      )}
+      {state.result?.diagnostics &&
+        !state.error &&
+        state.result.plugins.length === 0 && (
+          <Alert
+            className="mb-3"
+            description={
+              <pre className="m-0 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
+                {state.result.diagnostics}
+              </pre>
+            }
+            message={`${title}诊断`}
+            showIcon
+            type="warning"
+          />
+        )}
 
       {/* min-h 常驻基准：让检查中 / 尚未检查 / 空 / 列表各态共用同一最小高度，避免检查完成后从空态跳到插件卡片列表造成的布局跳动（CLS） */}
       <div className="min-h-[160px]">
         {state.error ? (
-          <div className="py-6 text-sm text-text-muted">该工具插件检查失败，请查看上方错误信息。</div>
+          <div className="py-6 text-sm text-text-muted">
+            该工具插件检查失败，请查看上方错误信息。
+          </div>
         ) : !state.result ? (
           // 尚未检查（result 为 null）：用与检查中一致的占位高度，不展示语义不准的「未发现已安装插件」空态
           <div className="flex min-h-[160px] items-center justify-center text-sm text-text-muted">
-            {state.loading ? "正在检查插件…" : "点击上方按钮检查插件"}
+            {state.loading ? '正在检查插件…' : '点击上方按钮检查插件'}
           </div>
         ) : state.result.plugins.length === 0 ? (
           <EmptyState text="未发现已安装插件" />
@@ -174,148 +213,262 @@ function PluginToolSection({
           <div className="space-y-3">
             {state.result.plugins.map((plugin) => {
               // lastUpdatedText 存储最近更新时间的中国时区中文展示结果。
-              const lastUpdatedText = formatPluginLastUpdated(plugin.last_updated);
+              const lastUpdatedText = formatPluginLastUpdated(
+                plugin.last_updated
+              )
               // toggling 存储当前插件是否正在执行启停操作。
-              const toggling = isPluginToggling(plugin);
-            return (
-              <Card
-                key={`${state.result?.tool}-${plugin.id}-${plugin.scope}-${plugin.install_path}`}
-              >
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-text-main">{plugin.id}</span>
-                      <Badge tone="info">v{plugin.current_version || "—"}</Badge>
-                      <Badge tone={updateStatusTone(plugin.update_status)}>
-                        {updateStatusLabel(plugin.update_status)}
-                      </Badge>
-                      {plugin.scope && <Badge tone="neutral">{plugin.scope}</Badge>}
-                      <Badge tone={plugin.enabled ? "success" : "neutral"}>
-                        {plugin.enabled ? "已启用" : "已禁用"}
-                      </Badge>
-                    </div>
-                    <div className="mt-1 space-y-0.5 text-xs text-text-muted">
-                      <div>市场：{plugin.marketplace || "—"}</div>
-                      <div>最新版本：{plugin.available_version || "—"}</div>
-                      <div>最近更新：{lastUpdatedText}</div>
-                      <div className="truncate" title={plugin.install_path}>
-                        路径：{plugin.install_path || "—"}
+              const toggling = isPluginToggling(plugin)
+              // gitBranchState 存储当前插件 Git 分支选择器状态。
+              const gitBranchState = branchState(plugin)
+              return (
+                <Card
+                  key={`${state.result?.tool}-${plugin.id}-${plugin.scope}-${plugin.install_path}`}
+                >
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-text-main">
+                          {plugin.id}
+                        </span>
+                        <Badge tone="info">
+                          v{plugin.current_version || '—'}
+                        </Badge>
+                        <Badge tone={updateStatusTone(plugin.update_status)}>
+                          {updateStatusLabel(plugin.update_status)}
+                        </Badge>
+                        {plugin.scope && (
+                          <Badge tone="neutral">{plugin.scope}</Badge>
+                        )}
+                        <Badge tone={plugin.enabled ? 'success' : 'neutral'}>
+                          {plugin.enabled ? '已启用' : '已禁用'}
+                        </Badge>
+                      </div>
+                      <div className="mt-1 space-y-0.5 text-xs text-text-muted">
+                        <div>市场：{plugin.marketplace || '—'}</div>
+                        <div>最新版本：{plugin.available_version || '—'}</div>
+                        <div>最近更新：{lastUpdatedText}</div>
+                        <div className="truncate" title={plugin.install_path}>
+                          路径：{plugin.install_path || '—'}
+                        </div>
+                        {gitBranchState.error && (
+                          <div
+                            className="text-danger"
+                            title={gitBranchState.error}
+                          >
+                            分支：{gitBranchState.error}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
-                    <div className="flex items-center gap-2 text-xs text-text-muted">
-                      <span>启用</span>
-                      <Switch
-                        aria-label={`启用 ${plugin.id}`}
-                        checked={plugin.enabled}
-                        disabled={toggling}
-                        loading={toggling}
-                        onChange={(checked) => onToggleEnabled(plugin, checked)}
+                    <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+                      <div className="flex items-center gap-2 text-xs text-text-muted">
+                        <span>启用</span>
+                        <Switch
+                          aria-label={`启用 ${plugin.id}`}
+                          checked={plugin.enabled}
+                          disabled={toggling}
+                          loading={toggling}
+                          onChange={(checked) =>
+                            onToggleEnabled(plugin, checked)
+                          }
+                        />
+                      </div>
+                      <Select
+                        aria-label={`选择 ${plugin.id} 分支`}
+                        className="min-w-40"
+                        disabled={
+                          !plugin.install_path || gitBranchState.switching
+                        }
+                        loading={
+                          gitBranchState.loading || gitBranchState.switching
+                        }
+                        onChange={(branch) => onSwitchBranch(plugin, branch)}
+                        onOpenChange={(open) => {
+                          if (open) onLoadBranches(plugin)
+                        }}
+                        options={gitBranchState.branches.map((branch) => ({
+                          label: branch,
+                          value: branch,
+                        }))}
+                        placeholder="选择 Git 分支"
+                        showSearch
+                        status={gitBranchState.error ? 'error' : undefined}
+                        value={gitBranchState.current || undefined}
                       />
+                      <Button
+                        onClick={() => {
+                          void revealInFinder(plugin.install_path).catch(
+                            console.error
+                          )
+                        }}
+                        variant="ghost"
+                        disabled={!plugin.install_path}
+                      >
+                        Finder
+                      </Button>
+                      <Button
+                        onClick={() => onCheckPlugin(plugin)}
+                        variant="default"
+                        loading={isPluginChecking(plugin)}
+                      >
+                        检查更新
+                      </Button>
+                      <Button
+                        onClick={() => onUpdate(plugin)}
+                        variant="primary"
+                        disabled={plugin.update_status === 'same'}
+                        loading={isPluginUpdating(plugin)}
+                      >
+                        拉取更新
+                      </Button>
                     </div>
-                    <Button
-                      onClick={() => {
-                        void revealInFinder(plugin.install_path).catch(console.error);
-                      }}
-                      variant="ghost"
-                      disabled={!plugin.install_path}
-                    >
-                      Finder
-                    </Button>
-                    <Button
-                      onClick={() => onCheckPlugin(plugin)}
-                      variant="default"
-                      loading={isPluginChecking(plugin)}
-                    >
-                      检查更新
-                    </Button>
-                    <Button
-                      onClick={() => onUpdate(plugin)}
-                      variant="primary"
-                      disabled={plugin.update_status === "same"}
-                      loading={isPluginUpdating(plugin)}
-                    >
-                      拉取更新
-                    </Button>
                   </div>
-                </div>
-              </Card>
-            );
-          })}
+                </Card>
+              )
+            })}
           </div>
         )}
       </div>
     </section>
-  );
+  )
 }
 
 // 插件管理页组件
 export default function PluginsPage({ tool }: PluginsPageProps) {
   // messageApi 存储 Ant Design 上下文消息实例，确保 toast 继承当前明暗主题和全局居中配置。
-  const { message: messageApi } = AntApp.useApp();
+  const { message: messageApi, modal: modalApi } = AntApp.useApp()
   // claudeHome 存储 Claude 配置根目录。
-  const claudeHome = useAppStore((state) => state.prefs?.claude_home || "");
+  const claudeHome = useAppStore((state) => state.prefs?.claude_home || '')
   // codexHome 存储 Codex 配置根目录。
-  const codexHome = useAppStore((state) => state.prefs?.codex_home || "");
+  const codexHome = useAppStore((state) => state.prefs?.codex_home || '')
   // pluginPage 存储插件页跨 tab 保留的检查与更新状态。
-  const pluginPage = useAppStore((state) => state.pluginPage);
+  const pluginPage = useAppStore((state) => state.pluginPage)
   // checkPluginUpdates 存储检查指定工具插件更新的 store action。
-  const checkPluginUpdates = useAppStore((state) => state.checkPluginUpdates);
+  const checkPluginUpdates = useAppStore((state) => state.checkPluginUpdates)
   // checkAllPluginUpdates 存储并行检查全部工具插件更新的 store action。
-  const checkAllPluginUpdates = useAppStore((state) => state.checkAllPluginUpdates);
+  const checkAllPluginUpdates = useAppStore(
+    (state) => state.checkAllPluginUpdates
+  )
   // checkSinglePluginUpdate 存储只读检查指定插件版本的 store action。
-  const checkSinglePluginUpdate = useAppStore((state) => state.checkSinglePluginUpdate);
+  const checkSinglePluginUpdate = useAppStore(
+    (state) => state.checkSinglePluginUpdate
+  )
   // updatePlugin 存储更新指定工具插件的 store action。
-  const updatePlugin = useAppStore((state) => state.updatePlugin);
+  const updatePlugin = useAppStore((state) => state.updatePlugin)
   // setPluginEnabled 存储启用或禁用指定工具插件的 store action。
-  const setPluginEnabled = useAppStore((state) => state.setPluginEnabled);
+  const setPluginEnabled = useAppStore((state) => state.setPluginEnabled)
+  // loadPluginBranches 存储异步刷新插件 Git 分支的 store action。
+  const loadPluginBranches = useAppStore((state) => state.loadPluginBranches)
+  // switchPluginBranch 存储异步切换插件 Git 分支的 store action。
+  const switchPluginBranch = useAppStore((state) => state.switchPluginBranch)
+
+  // getPluginBranchState 将 store 中的分支状态转换为选择器渲染结构。
+  // pluginTool 参数存储插件所属工具，plugin 参数存储目标插件。
+  const getPluginBranchState = (
+    pluginTool: 'claude' | 'codex',
+    plugin: ToolPluginInfo
+  ) => {
+    // state 存储目标插件当前分支状态，尚未查询时为空。
+    const state = pluginPage.branches[pluginBranchKey(pluginTool, plugin)]
+    return {
+      loading: state?.loading || false,
+      switching: state?.switching || false,
+      current: state?.info?.current_branch || '',
+      branches: state?.info?.branches || [],
+      error: state?.error || '',
+    }
+  }
+
+  // confirmMarketplaceBranchSwitch 确认 marketplace 级分支切换并列出全部受影响插件。
+  // pluginTool 参数存储工具，plugin 参数存储触发操作的插件，branch 参数存储目标分支。
+  const confirmMarketplaceBranchSwitch = (
+    pluginTool: 'claude' | 'codex',
+    plugin: ToolPluginInfo,
+    branch: string
+  ) => {
+    // result 存储当前工具最近一次插件检查结果。
+    const result = pluginPage[pluginTool].result
+    // marketplacePlugins 存储同一 marketplace 下的全部插件安装记录。
+    const marketplacePlugins = (result?.plugins || []).filter(
+      (item) => item.marketplace === plugin.marketplace
+    )
+    // affectedPlugins 存储按插件 ID 去重后的受影响插件。
+    const affectedPlugins = [
+      ...new Map(marketplacePlugins.map((item) => [item.id, item])).values(),
+    ]
+    modalApi.confirm({
+      title: `切换 ${plugin.marketplace} marketplace 分支`,
+      content: (
+        <div className="space-y-2">
+          <div>
+            切换到 <span className="font-mono">{branch}</span>{' '}
+            后，以下插件都会使用该分支中的能力：
+          </div>
+          <ul className="list-disc space-y-1 pl-5">
+            {affectedPlugins.map((item) => (
+              <li key={`${item.id}-${item.scope}`}>{item.id}</li>
+            ))}
+          </ul>
+        </div>
+      ),
+      okText: '确认切换',
+      cancelText: '取消',
+      onOk: () => switchPluginBranch(pluginTool, plugin, branch),
+    })
+  }
 
   // showPluginCheckMessage 执行单插件检查，并用 Ant Design toast 展示最终结果。
   // pluginTool 参数存储插件所属工具，plugin 参数存储目标插件信息。
   const showPluginCheckMessage = async (
-    pluginTool: "claude" | "codex",
+    pluginTool: 'claude' | 'codex',
     plugin: ToolPluginInfo
   ) => {
-    await checkSinglePluginUpdate(pluginTool, plugin);
+    await checkSinglePluginUpdate(pluginTool, plugin)
     // feedbackKey 存储目标插件在 store 检查结果映射中的唯一 key。
-    const feedbackKey = pluginUpdateKey(pluginTool, plugin);
+    const feedbackKey = pluginUpdateKey(pluginTool, plugin)
     // feedback 存储刚完成检查生成的提示语义与文本。
-    const feedback = useAppStore.getState().pluginPage.pluginCheckResults[feedbackKey];
+    const feedback =
+      useAppStore.getState().pluginPage.pluginCheckResults[feedbackKey]
     if (!feedback) {
-      return;
+      return
     }
-    if (feedback.phase === "ok") {
-      messageApi.success(feedback.text);
-      return;
+    if (feedback.phase === 'ok') {
+      messageApi.success(feedback.text)
+      return
     }
-    if (feedback.phase === "err") {
-      messageApi.error(feedback.text);
-      return;
+    if (feedback.phase === 'err') {
+      messageApi.error(feedback.text)
+      return
     }
-    messageApi.warning(feedback.text);
-  };
+    messageApi.warning(feedback.text)
+  }
 
   useEffect(() => {
     // timer 存储首轮插件检查的延迟句柄，避免切到插件 tab 时同步启动 CLI 检查造成卡顿。
     const timer = window.setTimeout(() => {
       if (tool) {
-        void checkPluginUpdates(tool);
+        void checkPluginUpdates(tool)
       } else {
-        void checkAllPluginUpdates();
+        void checkAllPluginUpdates()
       }
-    }, INITIAL_PLUGIN_CHECK_DELAY_MS);
+    }, INITIAL_PLUGIN_CHECK_DELAY_MS)
 
     return () => {
-      window.clearTimeout(timer);
-    };
-  }, [checkAllPluginUpdates, checkPluginUpdates, claudeHome, codexHome, tool]);
+      window.clearTimeout(timer)
+    }
+  }, [checkAllPluginUpdates, checkPluginUpdates, claudeHome, codexHome, tool])
 
   return (
     <PageShell>
       <PageHeader
-        title={tool ? `${tool === "codex" ? "Codex" : "Claude Code"} · 插件` : "插件"}
-        subtitle={tool ? `管理 ${tool === "codex" ? "Codex" : "Claude Code"} 插件，检查可用版本并拉取更新` : "管理 Claude Code 与 Codex 插件，检查可用版本并拉取更新"}
+        title={
+          tool ? `${tool === 'codex' ? 'Codex' : 'Claude Code'} · 插件` : '插件'
+        }
+        subtitle={
+          tool
+            ? `管理 ${tool === 'codex' ? 'Codex' : 'Claude Code'} 插件，检查可用版本并拉取更新`
+            : '管理 Claude Code 与 Codex 插件，检查可用版本并拉取更新'
+        }
       />
 
       {pluginPage.update && (
@@ -323,25 +476,25 @@ export default function PluginsPage({ tool }: PluginsPageProps) {
           className="mb-4"
           description={
             pluginPage.update.text ? (
-            <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
-              {pluginPage.update.text}
-            </pre>
+              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono">
+                {pluginPage.update.text}
+              </pre>
             ) : undefined
           }
           message={
-            pluginPage.update.phase === "loading"
+            pluginPage.update.phase === 'loading'
               ? `正在更新 ${pluginPage.update.target}…`
               : `${pluginPage.update.target} 更新${
-                  pluginPage.update.phase === "ok" ? "成功" : "失败"
+                  pluginPage.update.phase === 'ok' ? '成功' : '失败'
                 }`
           }
           showIcon
           type={
-            pluginPage.update.phase === "err"
-              ? "error"
-              : pluginPage.update.phase === "ok"
-              ? "success"
-              : "info"
+            pluginPage.update.phase === 'err'
+              ? 'error'
+              : pluginPage.update.phase === 'ok'
+                ? 'success'
+                : 'info'
           }
         />
       )}
@@ -357,73 +510,103 @@ export default function PluginsPage({ tool }: PluginsPageProps) {
             ) : undefined
           }
           message={
-            pluginPage.toggle.phase === "loading"
+            pluginPage.toggle.phase === 'loading'
               ? `正在切换 ${pluginPage.toggle.target}…`
               : `${pluginPage.toggle.target} 启停${
-                  pluginPage.toggle.phase === "ok" ? "成功" : "失败"
+                  pluginPage.toggle.phase === 'ok' ? '成功' : '失败'
                 }`
           }
           showIcon
           type={
-            pluginPage.toggle.phase === "err"
-              ? "error"
-              : pluginPage.toggle.phase === "ok"
-              ? "success"
-              : "info"
+            pluginPage.toggle.phase === 'err'
+              ? 'error'
+              : pluginPage.toggle.phase === 'ok'
+                ? 'success'
+                : 'info'
           }
         />
       )}
 
-      {tool !== "codex" && <PluginToolSection
-        title="Claude 插件"
-        state={pluginPage.claude}
-        onRefresh={() => {
-          void checkPluginUpdates("claude");
-        }}
-        onUpdate={(plugin) => {
-          void updatePlugin("claude", plugin);
-        }}
-        onCheckPlugin={(plugin) => {
-          void showPluginCheckMessage("claude", plugin);
-        }}
-        onToggleEnabled={(plugin, enabled) => {
-          void setPluginEnabled("claude", plugin, enabled);
-        }}
-        isPluginUpdating={(plugin) => {
-          return Boolean(pluginPage.updating[pluginUpdateKey("claude", plugin)]);
-        }}
-        isPluginChecking={(plugin) => {
-          return Boolean(pluginPage.checkingPlugins[pluginUpdateKey("claude", plugin)]);
-        }}
-        isPluginToggling={(plugin) => {
-          return Boolean(pluginPage.toggling[pluginUpdateKey("claude", plugin)]);
-        }}
-      />}
-      {tool !== "claude" && <PluginToolSection
-        title="Codex 插件"
-        state={pluginPage.codex}
-        onRefresh={() => {
-          void checkPluginUpdates("codex");
-        }}
-        onUpdate={(plugin) => {
-          void updatePlugin("codex", plugin);
-        }}
-        onCheckPlugin={(plugin) => {
-          void showPluginCheckMessage("codex", plugin);
-        }}
-        onToggleEnabled={(plugin, enabled) => {
-          void setPluginEnabled("codex", plugin, enabled);
-        }}
-        isPluginUpdating={(plugin) => {
-          return Boolean(pluginPage.updating[pluginUpdateKey("codex", plugin)]);
-        }}
-        isPluginChecking={(plugin) => {
-          return Boolean(pluginPage.checkingPlugins[pluginUpdateKey("codex", plugin)]);
-        }}
-        isPluginToggling={(plugin) => {
-          return Boolean(pluginPage.toggling[pluginUpdateKey("codex", plugin)]);
-        }}
-      />}
+      {tool !== 'codex' && (
+        <PluginToolSection
+          title="Claude 插件"
+          state={pluginPage.claude}
+          onRefresh={() => {
+            void checkPluginUpdates('claude')
+          }}
+          onUpdate={(plugin) => {
+            void updatePlugin('claude', plugin)
+          }}
+          onCheckPlugin={(plugin) => {
+            void showPluginCheckMessage('claude', plugin)
+          }}
+          onToggleEnabled={(plugin, enabled) => {
+            void setPluginEnabled('claude', plugin, enabled)
+          }}
+          isPluginUpdating={(plugin) => {
+            return Boolean(
+              pluginPage.updating[pluginUpdateKey('claude', plugin)]
+            )
+          }}
+          isPluginChecking={(plugin) => {
+            return Boolean(
+              pluginPage.checkingPlugins[pluginUpdateKey('claude', plugin)]
+            )
+          }}
+          isPluginToggling={(plugin) => {
+            return Boolean(
+              pluginPage.toggling[pluginUpdateKey('claude', plugin)]
+            )
+          }}
+          onLoadBranches={(plugin) => {
+            void loadPluginBranches('claude', plugin)
+          }}
+          onSwitchBranch={(plugin, branch) => {
+            confirmMarketplaceBranchSwitch('claude', plugin, branch)
+          }}
+          branchState={(plugin) => getPluginBranchState('claude', plugin)}
+        />
+      )}
+      {tool !== 'claude' && (
+        <PluginToolSection
+          title="Codex 插件"
+          state={pluginPage.codex}
+          onRefresh={() => {
+            void checkPluginUpdates('codex')
+          }}
+          onUpdate={(plugin) => {
+            void updatePlugin('codex', plugin)
+          }}
+          onCheckPlugin={(plugin) => {
+            void showPluginCheckMessage('codex', plugin)
+          }}
+          onToggleEnabled={(plugin, enabled) => {
+            void setPluginEnabled('codex', plugin, enabled)
+          }}
+          isPluginUpdating={(plugin) => {
+            return Boolean(
+              pluginPage.updating[pluginUpdateKey('codex', plugin)]
+            )
+          }}
+          isPluginChecking={(plugin) => {
+            return Boolean(
+              pluginPage.checkingPlugins[pluginUpdateKey('codex', plugin)]
+            )
+          }}
+          isPluginToggling={(plugin) => {
+            return Boolean(
+              pluginPage.toggling[pluginUpdateKey('codex', plugin)]
+            )
+          }}
+          onLoadBranches={(plugin) => {
+            void loadPluginBranches('codex', plugin)
+          }}
+          onSwitchBranch={(plugin, branch) => {
+            confirmMarketplaceBranchSwitch('codex', plugin, branch)
+          }}
+          branchState={(plugin) => getPluginBranchState('codex', plugin)}
+        />
+      )}
     </PageShell>
-  );
+  )
 }
