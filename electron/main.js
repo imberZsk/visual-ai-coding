@@ -1,5 +1,12 @@
 // Electron 主进程入口：创建窗口、注册 IPC、加载 Vite/构建后的渲染进程。
-import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  safeStorage,
+  session,
+  shell,
+} from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -121,7 +128,7 @@ async function runSmokeCheck(win) {
   }
 }
 
-registerIpcHandlers(ipcMain, { shell })
+registerIpcHandlers(ipcMain, { safeStorage, shell })
 // appUpdater 存储打包环境的真实更新器；开发和测试不加载 Electron 更新模块。
 const appUpdater = await loadAutoUpdater(
   () => import('electron-updater'),

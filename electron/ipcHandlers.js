@@ -15,12 +15,21 @@ import {
   listClaudePlugins,
   setClaudePluginEnabled,
   setCodexPluginEnabled,
+  listPluginGitBranches,
+  switchPluginGitBranch,
   updateClaudeMarketplace,
   updateClaudePlugin,
   updateCodexMarketplace,
   updateCodexPlugin,
 } from '../src/core/plugins.js'
 import { listSkills } from '../src/core/skills.js'
+import {
+  deleteQuotaAccount,
+  discoverQuotaModels,
+  listQuotaAccounts,
+  queryQuotaAccount,
+  saveQuotaAccount,
+} from '../src/core/quotaManager.js'
 import {
   checkToolLatestVersion,
   detectTools,
@@ -44,6 +53,16 @@ import {
 export function registerIpcHandlers(ipcMain, deps = {}) {
   // injectedDeps 存储测试或主进程注入的 Electron shell 等依赖。
   const injectedDeps = deps
+  // decryptQuotaSecret 使用系统安全存储解密额度凭据，仅供主进程额度请求使用。
+  // encryptedSecret 参数存储 Base64 编码后的系统密文。
+  const decryptQuotaSecret = (encryptedSecret) => {
+    if (!injectedDeps.safeStorage?.isEncryptionAvailable()) {
+      throw new Error('当前系统安全存储不可用，无法读取 API Key')
+    }
+    return injectedDeps.safeStorage.decryptString(
+      Buffer.from(encryptedSecret, 'base64')
+    )
+  }
 
   ipcMain.handle(IPC.GET_PREFERENCES, () => getPreferences())
   ipcMain.handle(IPC.SAVE_PREFERENCES, (_event, prefs) =>
@@ -110,6 +129,34 @@ export function registerIpcHandlers(ipcMain, deps = {}) {
       payload.enabled
     )
   })
+  ipcMain.handle(IPC.LIST_PLUGIN_GIT_BRANCHES, (_event, payload) =>
+    listPluginGitBranches(payload)
+  )
+  ipcMain.handle(IPC.SWITCH_PLUGIN_GIT_BRANCH, (_event, payload) =>
+    switchPluginGitBranch(payload)
+  )
+  ipcMain.handle(IPC.LIST_QUOTA_ACCOUNTS, () => listQuotaAccounts())
+  ipcMain.handle(IPC.SAVE_QUOTA_ACCOUNT, (_event, payload) =>
+    saveQuotaAccount(payload, {
+      encryptSecret: (secret) => {
+        if (!injectedDeps.safeStorage?.isEncryptionAvailable()) {
+          throw new Error('当前系统安全存储不可用，无法安全保存 API Key')
+        }
+        return injectedDeps.safeStorage.encryptString(secret).toString('base64')
+      },
+    })
+  )
+  ipcMain.handle(IPC.DELETE_QUOTA_ACCOUNT, (_event, accountId) =>
+    deleteQuotaAccount(accountId)
+  )
+  ipcMain.handle(IPC.QUERY_QUOTA_ACCOUNT, (_event, accountId) =>
+    queryQuotaAccount(accountId, {
+      decryptSecret: decryptQuotaSecret,
+    })
+  )
+  ipcMain.handle(IPC.DISCOVER_QUOTA_MODELS, (_event, payload) =>
+    discoverQuotaModels(payload, { decryptSecret: decryptQuotaSecret })
+  )
 
   ipcMain.handle(IPC.LIST_SKILLS, (_event, payload) =>
     listSkills(payload.claudeHome, payload.codexHome)

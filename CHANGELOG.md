@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.17.0 - 2026-07-22
+
+### 新增
+
+- 插件页支持异步读取并选择 marketplace Git 仓库的本地/远端分支；切换前会列出同一 marketplace 下全部受影响插件，确认后统一切换 Claude 插件运行快照或重新注册 Codex 插件，使其共同使用所选分支的能力。分支刷新与切换共享 marketplace 级 loading，不阻塞 Electron 主进程，并在工作区有未提交修改时拒绝切换。
+- 新增额度管理器，可维护 OpenAI、Anthropic 或自定义供应商账户及其可用模型；自定义供应商支持配置 Base URL 与 API Key，通过 OpenAI 兼容的 `/models` 接口读取模型，并以独立额度路径查询当前周期已用、总额度和剩余额度。API Key 由 Electron 主进程通过系统安全存储加密，渲染进程不读取密钥明文，每个账户独立展示查询 loading 与错误状态。
+
 ## 0.16.2 - 2026-07-21
 
 ### 修复

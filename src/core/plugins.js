@@ -1,6 +1,7 @@
 // 插件管理核心逻辑：解析 Claude/Codex 插件列表、比较版本并调用 CLI 更新。
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { cp, mkdir } from 'node:fs/promises'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import * as TOML from 'smol-toml'
 import { atomicWrite, expandHome, runCommand } from './util.js'
 
@@ -718,7 +719,9 @@ export async function checkClaudePluginUpdates(
   )
   // marketplaceNames 存储已安装插件涉及的唯一 marketplace 名称。
   const marketplaceNames = [
-    ...new Set(result.plugins.map((plugin) => plugin.marketplace).filter(Boolean)),
+    ...new Set(
+      result.plugins.map((plugin) => plugin.marketplace).filter(Boolean)
+    ),
   ]
   // refreshResults 存储各 marketplace 并行刷新后的成功或失败状态。
   const refreshResults = await Promise.allSettled(
@@ -969,6 +972,455 @@ export async function updateCodexMarketplace(marketplaceName) {
     args.push(normalizedName)
   }
   return runPluginCli('codex', args, 'CODEX_HOME', defaultHome)
+}
+
+// PLUGIN_GIT_TIMEOUT_MS 存储插件 Git 查询或切换允许的最长等待时间。
+const PLUGIN_GIT_TIMEOUT_MS = 30_000
+
+// pluginRepositoryCandidates 构造插件 Git 仓库的候选路径。
+// payload 参数存储工具、marketplace、安装路径与配置根目录。
+function pluginRepositoryCandidates(payload) {
+  // marketplaceName 存储去除空白后的 marketplace 名称。
+  const marketplaceName = String(payload.marketplace || '').trim()
+  // toolHome 存储当前工具配置根目录。
+  const toolHome = expandHome(
+    payload.tool === 'claude' ? payload.claudeHome : payload.codexHome
+  )
+  // marketplacePath 存储当前工具的 marketplace Git 仓库路径。
+  let marketplacePath = join(
+    toolHome,
+    'plugins',
+    'marketplaces',
+    marketplaceName
+  )
+  if (payload.tool === 'codex') {
+    try {
+      // codexRoot 存储 Codex 配置，用于区分 Git 快照与本地 marketplace。
+      const codexRoot = readCodexConfigRoot(toolHome)
+      // marketplaceConfig 存储目标 Codex marketplace 配置。
+      const marketplaceConfig = codexRoot.marketplaces?.[marketplaceName]
+      // sourceType 存储 Codex marketplace 来源类型。
+      const sourceType = jsonString(marketplaceConfig, 'source_type')
+      // source 存储 Codex marketplace 原始来源。
+      const source = jsonString(marketplaceConfig, 'source')
+      marketplacePath =
+        sourceType === 'git'
+          ? join(toolHome, '.tmp', 'marketplaces', marketplaceName)
+          : expandHome(source)
+    } catch {
+      // 旧配置或测试环境没有 config.toml 时继续使用实际插件 Git 安装路径。
+      marketplacePath = ''
+    }
+  }
+  // candidates 优先检查 marketplace 仓库，再用安装路径兼容直接 Git 安装插件。
+  const candidates = [marketplacePath, expandHome(payload.installPath)].filter(
+    Boolean
+  )
+  return [...new Set(candidates)]
+}
+
+// resolvePluginRepository 定位实际承载插件能力的 Git 仓库根目录。
+// payload 参数存储插件路径信息，commandRunner 参数用于执行异步 Git 命令。
+async function resolvePluginRepository(payload, commandRunner) {
+  // candidates 存储插件安装目录与 marketplace 目录候选项。
+  const candidates = pluginRepositoryCandidates(payload)
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) continue
+    try {
+      // result 存储 Git 返回的仓库顶层目录。
+      const result = await commandRunner(
+        'git',
+        ['-C', candidate, 'rev-parse', '--show-toplevel'],
+        { timeout: PLUGIN_GIT_TIMEOUT_MS }
+      )
+      // repositoryPath 存储标准化后的仓库根目录。
+      const repositoryPath = result.stdout.trim()
+      if (repositoryPath) return repositoryPath
+    } catch {
+      // 安装快照不是 Git 仓库时继续检查其余候选项。
+    }
+  }
+  throw new Error('未找到插件安装路径或 marketplace 对应的 Git 仓库')
+}
+
+// readJsonFile 读取并解析 JSON 文件，失败时附带明确路径。
+// filePath 参数存储需要读取的 JSON 文件路径。
+function readJsonFile(filePath) {
+  try {
+    return JSON.parse(readFileSync(filePath, 'utf8'))
+  } catch (error) {
+    throw new Error(`读取 ${filePath} 失败: ${error.message}`, { cause: error })
+  }
+}
+
+// shouldCopyPluginCachePath 排除 Git 元数据，避免根目录插件把完整仓库对象复制进运行缓存。
+// sourcePath 参数存储 fs.cp 当前准备复制的源路径。
+function shouldCopyPluginCachePath(sourcePath) {
+  return basename(sourcePath) !== '.git'
+}
+
+// activateClaudePluginBranch 将 marketplace 当前分支的插件复制到 Claude 缓存并更新安装索引。
+// payload 参数存储插件标识与 Claude home，repositoryPath 参数存储 marketplace 仓库，branch 参数存储当前本地分支。
+async function activateClaudePluginBranch(
+  payload,
+  repositoryPath,
+  branch,
+  commandRunner
+) {
+  // marketplaceManifestPath 存储 marketplace 插件清单路径。
+  const marketplaceManifestPath = join(
+    repositoryPath,
+    '.claude-plugin',
+    'marketplace.json'
+  )
+  // marketplaceManifest 存储当前分支解析后的插件清单。
+  const marketplaceManifest = readJsonFile(marketplaceManifestPath)
+  // pluginName 存储插件完整 ID 中 @ 前的短名称。
+  const pluginName = pluginShortName(payload.pluginId)
+  // pluginEntry 存储 marketplace 中与目标插件匹配的条目。
+  const pluginEntry = (
+    Array.isArray(marketplaceManifest.plugins)
+      ? marketplaceManifest.plugins
+      : []
+  ).find((item) => jsonString(item, 'name') === pluginName)
+  if (!pluginEntry || typeof pluginEntry.source !== 'string') {
+    throw new Error('当前分支未找到可复制的本地插件源码')
+  }
+  // sourcePath 存储解析后的插件源码绝对路径。
+  const sourcePath = resolve(repositoryPath, pluginEntry.source)
+  // repositoryRoot 存储标准化后的 marketplace 仓库根目录。
+  const repositoryRoot = resolve(repositoryPath)
+  if (
+    (sourcePath !== repositoryRoot &&
+      !sourcePath.startsWith(`${repositoryRoot}${sep}`)) ||
+    !existsSync(sourcePath)
+  ) {
+    throw new Error('当前分支的插件源码路径无效')
+  }
+  // commitResult 存储当前分支 HEAD commit，用于生成不可冲突的缓存快照。
+  const commitResult = await commandRunner(
+    'git',
+    ['-C', repositoryPath, 'rev-parse', 'HEAD'],
+    { timeout: PLUGIN_GIT_TIMEOUT_MS }
+  )
+  // commitSha 存储当前分支完整 commit SHA。
+  const commitSha = commitResult.stdout.trim()
+  if (!commitSha) throw new Error('无法读取插件分支 commit')
+  // safeBranch 存储可安全用于缓存目录名的分支名称。
+  const safeBranch = String(branch || 'detached').replace(
+    /[^0-9A-Za-z._-]+/g,
+    '-'
+  )
+  // cachePath 存储该分支插件能力的新缓存快照路径。
+  const cachePath = join(
+    expandHome(payload.claudeHome),
+    'plugins',
+    'cache',
+    String(payload.marketplace || '').trim(),
+    pluginName,
+    `branch-${safeBranch}-${commitSha.slice(0, 12)}`
+  )
+  await mkdir(dirname(cachePath), { recursive: true })
+  if (!existsSync(cachePath)) {
+    // commit SHA 对应不可变快照；已存在时直接复用，避免重复复制大插件阻塞磁盘。
+    await cp(sourcePath, cachePath, {
+      recursive: true,
+      force: true,
+      filter: shouldCopyPluginCachePath,
+    })
+  }
+
+  // installedPluginsPath 存储 Claude 已安装插件索引路径。
+  const installedPluginsPath = join(
+    expandHome(payload.claudeHome),
+    'plugins',
+    'installed_plugins.json'
+  )
+  // installedRoot 存储 Claude 已安装插件索引根对象。
+  const installedRoot = readJsonFile(installedPluginsPath)
+  // installations 存储目标插件的全部 scope 安装记录。
+  const installations = installedRoot.plugins?.[payload.pluginId]
+  if (!Array.isArray(installations)) {
+    throw new Error('Claude 已安装插件索引中未找到目标插件')
+  }
+  // installation 存储与当前卡片 scope 和安装路径匹配的记录。
+  const installation =
+    installations.find(
+      (item) =>
+        jsonString(item, 'scope') === String(payload.scope || '') &&
+        jsonString(item, 'installPath') === expandHome(payload.installPath)
+    ) ||
+    installations.find(
+      (item) => jsonString(item, 'scope') === String(payload.scope || '')
+    )
+  if (!installation) throw new Error('未找到当前作用域的 Claude 插件安装记录')
+  installation.installPath = cachePath
+  installation.gitCommitSha = commitSha
+  installation.lastUpdated = new Date().toISOString()
+  atomicWrite(
+    installedPluginsPath,
+    `${JSON.stringify(installedRoot, null, 2)}\n`
+  )
+
+  // knownMarketplacesPath 存储 Claude marketplace 来源配置路径。
+  const knownMarketplacesPath = join(
+    expandHome(payload.claudeHome),
+    'plugins',
+    'known_marketplaces.json'
+  )
+  // knownMarketplaces 存储全部已注册 marketplace 来源。
+  const knownMarketplaces = readJsonFile(knownMarketplacesPath)
+  // marketplaceConfig 存储当前插件所属 marketplace 配置。
+  const marketplaceConfig = knownMarketplaces[payload.marketplace]
+  if (marketplaceConfig?.source?.source === 'git') {
+    // ref 必须持久化，否则后续 marketplace 更新会重新回到默认分支。
+    marketplaceConfig.source.ref = branch
+    marketplaceConfig.lastUpdated = new Date().toISOString()
+    atomicWrite(
+      knownMarketplacesPath,
+      `${JSON.stringify(knownMarketplaces, null, 2)}\n`
+    )
+  }
+}
+
+// activateClaudeMarketplaceBranch 为 marketplace 下所有已安装插件生成当前分支缓存。
+// payload 参数存储 marketplace 与 Claude home，repositoryPath 和 branch 定位已切换源码。
+async function activateClaudeMarketplaceBranch(
+  payload,
+  repositoryPath,
+  branch,
+  commandRunner
+) {
+  // installedPluginsPath 存储 Claude 已安装插件索引路径。
+  const installedPluginsPath = join(
+    expandHome(payload.claudeHome),
+    'plugins',
+    'installed_plugins.json'
+  )
+  // installedRoot 存储 Claude 已安装插件索引根对象。
+  const installedRoot = readJsonFile(installedPluginsPath)
+  // marketplaceSuffix 存储用于筛选同 marketplace 插件 ID 的后缀。
+  const marketplaceSuffix = `@${String(payload.marketplace || '').trim()}`
+  // affectedInstallations 存储该 marketplace 下每条已安装插件记录。
+  const affectedInstallations = Object.entries(
+    installedRoot.plugins || {}
+  ).flatMap(([pluginId, installations]) =>
+    pluginId.endsWith(marketplaceSuffix) && Array.isArray(installations)
+      ? installations.map((installation) => ({ pluginId, installation }))
+      : []
+  )
+  if (affectedInstallations.length === 0) {
+    throw new Error('该 marketplace 下没有已安装插件')
+  }
+  for (const affected of affectedInstallations) {
+    await activateClaudePluginBranch(
+      {
+        ...payload,
+        pluginId: affected.pluginId,
+        scope: jsonString(affected.installation, 'scope'),
+        installPath: jsonString(affected.installation, 'installPath'),
+      },
+      repositoryPath,
+      branch,
+      commandRunner
+    )
+  }
+}
+
+// activateCodexMarketplaceBranch 持久化 marketplace ref 并重装同市场全部已注册插件。
+// payload 参数存储 Codex home 与 marketplace，branch 参数存储已切换的本地分支。
+async function activateCodexMarketplaceBranch(payload, branch, commandRunner) {
+  // codexHome 存储展开后的 Codex 配置根目录。
+  const codexHome = expandHome(payload.codexHome)
+  // root 存储解析后的 Codex config.toml 根对象。
+  const root = readCodexConfigRoot(codexHome)
+  // marketplaceConfig 存储目标 marketplace 配置。
+  const marketplaceConfig = root.marketplaces?.[payload.marketplace]
+  if (!marketplaceConfig || typeof marketplaceConfig !== 'object') {
+    throw new Error('Codex 配置中未找到目标 marketplace')
+  }
+  marketplaceConfig.ref = branch
+  writeCodexConfigRoot(codexHome, root)
+  // marketplaceSuffix 存储用于筛选同 marketplace 插件 ID 的后缀。
+  const marketplaceSuffix = `@${String(payload.marketplace || '').trim()}`
+  // pluginIds 存储该 marketplace 下全部已注册插件 ID。
+  const pluginIds = Object.keys(root.plugins || {}).filter((pluginId) =>
+    pluginId.endsWith(marketplaceSuffix)
+  )
+  if (pluginIds.length === 0) throw new Error('该 marketplace 下没有已注册插件')
+  for (const pluginId of pluginIds) {
+    await commandRunner('codex', ['plugin', 'add', pluginId, '--json'], {
+      env: { CODEX_HOME: codexHome },
+      timeout: PLUGIN_GIT_TIMEOUT_MS,
+    })
+  }
+}
+
+// readPluginGitBranches 读取仓库当前分支及全部本地/远端分支。
+// repositoryPath 参数存储仓库根目录，commandRunner 参数用于执行异步 Git 命令。
+async function readPluginGitBranches(repositoryPath, commandRunner) {
+  // currentResult 存储当前分支查询结果，detached HEAD 时命令返回空文本。
+  const currentResult = await commandRunner(
+    'git',
+    ['-C', repositoryPath, 'branch', '--show-current'],
+    { timeout: PLUGIN_GIT_TIMEOUT_MS }
+  )
+  // branchesResult 存储本地与远端引用的短名称列表。
+  const branchesResult = await commandRunner(
+    'git',
+    [
+      '-C',
+      repositoryPath,
+      'for-each-ref',
+      '--format=%(refname:short)%09%(symref)',
+      'refs/heads',
+      'refs/remotes',
+    ],
+    { timeout: PLUGIN_GIT_TIMEOUT_MS }
+  )
+  // branches 存储过滤远端 HEAD 符号引用并排序后的可切换分支。
+  const branches = [
+    ...new Set(
+      branchesResult.stdout
+        .split('\n')
+        .map((line) => {
+          // parts 存储分支短名称和可选符号引用目标。
+          const parts = line.split('\t')
+          // branch 存储当前位置解析出的引用短名称。
+          const branch = parts[0]?.trim() || ''
+          return parts[1]?.trim() || branch.endsWith('/HEAD') ? '' : branch
+        })
+        .filter(Boolean)
+    ),
+  ].sort()
+  return {
+    repository_path: repositoryPath,
+    current_branch: currentResult.stdout.trim(),
+    branches,
+  }
+}
+
+// listPluginGitBranches 异步刷新远端引用并返回插件仓库分支。
+// payload 参数存储插件仓库定位信息，commandRunner 参数用于测试替换命令执行器。
+export async function listPluginGitBranches(
+  payload,
+  commandRunner = runCommand
+) {
+  // repositoryPath 存储定位到的插件 Git 仓库根目录。
+  const repositoryPath = await resolvePluginRepository(payload, commandRunner)
+  try {
+    await commandRunner(
+      'git',
+      ['-C', repositoryPath, 'fetch', '--all', '--prune'],
+      { timeout: PLUGIN_GIT_TIMEOUT_MS }
+    )
+  } catch {
+    // 网络不可用时仍返回本地缓存分支，避免分支选择能力整体不可用。
+  }
+  return readPluginGitBranches(repositoryPath, commandRunner)
+}
+
+// switchPluginGitBranch 安全切换插件仓库分支并返回切换后的状态。
+// payload 参数额外包含目标 branch，commandRunner 参数用于测试替换命令执行器。
+export async function switchPluginGitBranch(
+  payload,
+  commandRunner = runCommand
+) {
+  // repositoryPath 存储定位到的插件 Git 仓库根目录。
+  const repositoryPath = await resolvePluginRepository(payload, commandRunner)
+  // branchInfo 存储当前仓库允许切换的已知分支。
+  const branchInfo = await readPluginGitBranches(repositoryPath, commandRunner)
+  // targetBranch 存储去除空白后的目标分支名。
+  const targetBranch = String(payload.branch || '').trim()
+  if (!targetBranch || !branchInfo.branches.includes(targetBranch))
+    throw new Error('目标分支不存在，请刷新分支列表后重试')
+  // statusResult 存储工作区未提交修改，用于防止切换覆盖用户内容。
+  const statusResult = await commandRunner(
+    'git',
+    ['-C', repositoryPath, 'status', '--porcelain'],
+    { timeout: PLUGIN_GIT_TIMEOUT_MS }
+  )
+  if (statusResult.stdout.trim())
+    throw new Error('插件仓库存在未提交修改，请先提交或暂存后再切换分支')
+  // localBranchesResult 存储全部本地分支，用于区分直接切换与跟踪远端分支。
+  const localBranchesResult = await commandRunner(
+    'git',
+    [
+      '-C',
+      repositoryPath,
+      'for-each-ref',
+      '--format=%(refname:short)',
+      'refs/heads',
+    ],
+    { timeout: PLUGIN_GIT_TIMEOUT_MS }
+  )
+  // localBranches 存储本地分支名称集合。
+  const localBranches = new Set(
+    localBranchesResult.stdout
+      .split('\n')
+      .map((branch) => branch.trim())
+      .filter(Boolean)
+  )
+  // localBranch 存储远端分支对应的本地跟踪分支名。
+  const localBranch = targetBranch.includes('/')
+    ? targetBranch.slice(targetBranch.indexOf('/') + 1)
+    : targetBranch
+  if (localBranches.has(targetBranch) || localBranches.has(localBranch)) {
+    // checkoutBranch 存储最终要直接检出的现有本地分支。
+    const checkoutBranch = localBranches.has(targetBranch)
+      ? targetBranch
+      : localBranch
+    await commandRunner(
+      'git',
+      ['-C', repositoryPath, 'switch', checkoutBranch],
+      { timeout: PLUGIN_GIT_TIMEOUT_MS }
+    )
+  } else {
+    if (!localBranch) throw new Error('无法从远端引用解析本地分支名称')
+    await commandRunner(
+      'git',
+      [
+        '-C',
+        repositoryPath,
+        'switch',
+        '--track',
+        '-c',
+        localBranch,
+        targetBranch,
+      ],
+      { timeout: PLUGIN_GIT_TIMEOUT_MS }
+    )
+  }
+  // nextBranchInfo 存储切换完成后的分支状态。
+  const nextBranchInfo = await readPluginGitBranches(
+    repositoryPath,
+    commandRunner
+  )
+  // expandedInstallPath 存储标准化后的实际插件安装路径。
+  const expandedInstallPath = resolve(expandHome(payload.installPath))
+  // expandedRepositoryPath 存储标准化后的当前 Git 仓库根目录。
+  const expandedRepositoryPath = resolve(repositoryPath)
+  // installationUsesRepository 标记 Claude 是否已直接从当前 Git 工作树运行。
+  const installationUsesRepository =
+    expandedInstallPath === expandedRepositoryPath ||
+    expandedInstallPath.startsWith(`${expandedRepositoryPath}${sep}`)
+  if (payload.tool === 'claude' && !installationUsesRepository) {
+    // Claude 运行缓存快照，必须异步复制当前分支源码并更新安装索引才能真正使用该分支能力。
+    await activateClaudeMarketplaceBranch(
+      payload,
+      repositoryPath,
+      nextBranchInfo.current_branch,
+      commandRunner
+    )
+  } else if (payload.tool === 'codex' && !installationUsesRepository) {
+    // Codex marketplace 分支变化会影响其下全部注册插件，需要按新 ref 顺序重装。
+    await activateCodexMarketplaceBranch(
+      payload,
+      nextBranchInfo.current_branch,
+      commandRunner
+    )
+  }
+  return nextBranchInfo
 }
 
 // buildUpdateToolArgs 构造 npm 全局更新参数；插件测试复用该纯函数保持旧覆盖面。

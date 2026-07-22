@@ -82,6 +82,10 @@ vi.mock('./pages/AgentsPage', () => ({
   default: () => <div>Agents 页面</div>,
 }))
 
+vi.mock('./pages/QuotaPage', () => ({
+  default: () => <div>额度管理页面</div>,
+}))
+
 describe('App tab loading', () => {
   beforeEach(() => {
     storeState = {
@@ -157,6 +161,18 @@ describe('App tab loading', () => {
       screen.getByRole('navigation', { name: '主导航' })
     ).getByRole('menuitem', { name: 'Dashboard' })
     expect(overviewButton).toHaveClass('ant-menu-item-selected')
+  })
+
+  // 验证额度管理作为一级导航入口，并可切换到对应页面。
+  it('opens quota management from the primary navigation', async () => {
+    // rendered 存储 App 渲染结果，供 store mock 更新后重渲染。
+    const rendered = await renderApp()
+    rerenderApp = () => rendered.rerender(<App />)
+    // nav 存储主导航区域，避免匹配页面内同名文本。
+    const nav = screen.getByRole('navigation', { name: '主导航' })
+
+    fireEvent.click(within(nav).getByRole('menuitem', { name: '额度管理' }))
+    expect(await screen.findByText('额度管理页面')).toBeInTheDocument()
   })
 
   // 验证设置入口不混入主导航，而是保留为左侧栏底部操作。

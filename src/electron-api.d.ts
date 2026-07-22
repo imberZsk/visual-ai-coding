@@ -5,8 +5,14 @@ import type {
   ConfigFile,
   DirEntryInfo,
   MarketplaceInfo,
+  QuotaAccount,
+  QuotaAccountInput,
+  QuotaModelDiscoveryInput,
+  QuotaResult,
   OfficialSettingsSyncResult,
   PluginInfo,
+  PluginGitBranchInfo,
+  PluginGitPayload,
   PluginUpdateCheckResult,
   Preferences,
   SkillListResult,
@@ -77,6 +83,19 @@ declare global {
         claudeHome: string // Claude 配置根目录。
         codexHome: string // Codex 配置根目录。
       }) => Promise<string>
+      listPluginGitBranches: (
+        payload: PluginGitPayload
+      ) => Promise<PluginGitBranchInfo>
+      switchPluginGitBranch: (
+        payload: PluginGitPayload & { branch: string }
+      ) => Promise<PluginGitBranchInfo>
+      listQuotaAccounts: () => Promise<QuotaAccount[]> // 读取模型额度账户。
+      saveQuotaAccount: (payload: QuotaAccountInput) => Promise<QuotaAccount> // 保存模型额度账户。
+      deleteQuotaAccount: (accountId: string) => Promise<void> // 删除模型额度账户。
+      queryQuotaAccount: (accountId: string) => Promise<QuotaResult> // 查询模型账户额度。
+      discoverQuotaModels: (
+        payload: QuotaModelDiscoveryInput
+      ) => Promise<string[]> // 从兼容服务读取模型。
       listSkills: (payload: {
         claudeHome: string // Claude 配置根目录。
         codexHome: string // Codex 配置根目录。

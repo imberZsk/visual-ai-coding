@@ -10,6 +10,45 @@ export interface Preferences {
   hidden_visual_config_fields: Record<string, string[]> // 可视化配置中用户手动隐藏的字段路径，按 schema id 分组
 }
 
+// QuotaProvider 描述额度查询来源类型。
+export type QuotaProvider = 'openai' | 'anthropic' | 'custom'
+
+// QuotaAccount 描述前端可见的模型额度账户，不包含 API Key 明文。
+export interface QuotaAccount {
+  id: string // 账户稳定 ID。
+  name: string // 用户设置的账户名称。
+  provider: QuotaProvider // 额度来源类型。
+  models: string[] // 此账户可用的模型 ID。
+  base_url: string // OpenAI 兼容服务基础地址。
+  quota_path: string // 相对 Base URL 的额度查询路径。
+  endpoint: string // 自定义额度查询接口，内置供应商为空。
+  quota_limit: number // 当前周期总额度上限。
+  unit: string // 额度单位，例如 USD、CNY、tokens。
+  has_api_key: boolean // 主进程是否已安全保存凭据。
+}
+
+// QuotaAccountInput 描述新增或编辑额度账户时提交的数据。
+export interface QuotaAccountInput extends Omit<QuotaAccount, 'has_api_key'> {
+  api_key?: string // 新 API Key；编辑时留空表示保留旧值。
+}
+
+// QuotaResult 描述单个账户的当前额度查询结果。
+export interface QuotaResult {
+  account_id: string // 对应额度账户 ID。
+  checked_at: string // 查询完成时间 ISO 字符串。
+  used: number // 当前周期已使用额度。
+  limit: number // 当前周期总额度。
+  remaining: number // 当前周期剩余额度。
+  unit: string // 额度单位。
+}
+
+// QuotaModelDiscoveryInput 描述通过 Base URL 读取模型列表所需的数据。
+export interface QuotaModelDiscoveryInput {
+  account_id?: string // 编辑账户 ID，用于 API Key 留空时读取已保存凭据。
+  base_url: string // OpenAI 兼容服务基础地址。
+  api_key?: string // 新输入的 API Key。
+}
+
 // 单个配置文件，对应 Rust ConfigFile
 export interface ConfigFile {
   id: string // 逻辑标识
@@ -84,6 +123,24 @@ export interface ToolPluginInfo {
   install_path: string // 插件安装路径
   last_updated: string // 最近更新时间
   update_status: PluginUpdateStatus // 更新状态
+}
+
+// PluginGitBranchInfo 描述插件源码仓库的分支状态。
+export interface PluginGitBranchInfo {
+  repository_path: string // Git 仓库根目录
+  current_branch: string // 当前检出的本地分支，detached HEAD 时为空字符串
+  branches: string[] // 可切换的本地与远端分支名称
+}
+
+// PluginGitPayload 描述定位插件源码仓库所需的信息。
+export interface PluginGitPayload {
+  tool: 'claude' | 'codex' // 插件所属工具
+  pluginId: string // 插件完整 ID
+  scope: string // Claude 插件安装作用域，Codex 为空字符串
+  marketplace: string // 插件所属 marketplace
+  installPath: string // 插件安装路径
+  claudeHome: string // Claude 配置根目录
+  codexHome: string // Codex 配置根目录
 }
 
 // 插件更新检查结果，对应 Rust PluginUpdateCheckResult

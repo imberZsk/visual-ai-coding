@@ -13,6 +13,7 @@ import PluginsPage from './pages/PluginsPage'
 import SkillsPage from './pages/SkillsPage'
 import SettingsPage from './pages/SettingsPage'
 import UnifiedPage from './pages/UnifiedPage'
+import QuotaPage from './pages/QuotaPage'
 import { LoadingIcon } from './components/ui'
 import AppUpdateButton from './components/AppUpdateButton'
 
@@ -57,6 +58,9 @@ function renderPage(tab: string) {
     // 统一配置页：一次编写 MCP / Skills，同步到两端
     case 'unified':
       return <UnifiedPage />
+    // 模型额度管理页：维护供应商账户并查询剩余额度
+    case 'quota':
+      return <QuotaPage />
     // 应用设置页
     case 'settings':
       return <SettingsPage />

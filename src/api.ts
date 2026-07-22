@@ -6,7 +6,13 @@ import type {
   ClaudeOutputStyleListResult,
   DirEntryInfo,
   PluginInfo,
+  PluginGitBranchInfo,
+  PluginGitPayload,
   MarketplaceInfo,
+  QuotaAccount,
+  QuotaAccountInput,
+  QuotaModelDiscoveryInput,
+  QuotaResult,
   PluginUpdateCheckResult,
   SkillListResult,
   OfficialSettingsSyncResult,
@@ -159,6 +165,55 @@ export function setPluginEnabled(
   payload: PluginTogglePayload
 ): Promise<string> {
   return getElectronApi().setPluginEnabled(payload)
+}
+
+// 异步刷新并读取插件源码仓库的可切换分支。
+// payload 存储定位插件源码仓库所需的信息。
+export function listPluginGitBranches(
+  payload: PluginGitPayload
+): Promise<PluginGitBranchInfo> {
+  return getElectronApi().listPluginGitBranches(payload)
+}
+
+// 异步切换插件源码仓库分支。
+// payload 存储仓库定位信息，branch 为目标分支。
+export function switchPluginGitBranch(
+  payload: PluginGitPayload & { branch: string }
+): Promise<PluginGitBranchInfo> {
+  return getElectronApi().switchPluginGitBranch(payload)
+}
+
+// 读取全部模型额度账户，返回值不包含 API Key 明文。
+export function listQuotaAccounts(): Promise<QuotaAccount[]> {
+  return getElectronApi().listQuotaAccounts()
+}
+
+// 新增或更新模型额度账户。
+// input 参数存储供应商、模型、额度上限和可选的新 API Key。
+export function saveQuotaAccount(
+  input: QuotaAccountInput
+): Promise<QuotaAccount> {
+  return getElectronApi().saveQuotaAccount(input)
+}
+
+// 删除指定模型额度账户。
+// accountId 参数存储目标账户 ID。
+export function deleteQuotaAccount(accountId: string): Promise<void> {
+  return getElectronApi().deleteQuotaAccount(accountId)
+}
+
+// 异步查询指定模型账户的当前周期额度。
+// accountId 参数存储目标账户 ID。
+export function queryQuotaAccount(accountId: string): Promise<QuotaResult> {
+  return getElectronApi().queryQuotaAccount(accountId)
+}
+
+// 通过 OpenAI 兼容 Base URL 的 /models 接口读取模型 ID。
+// input 参数存储 Base URL，以及新密钥或可复用旧密钥的账户 ID。
+export function discoverQuotaModels(
+  input: QuotaModelDiscoveryInput
+): Promise<string[]> {
+  return getElectronApi().discoverQuotaModels(input)
 }
 
 // 探测本机 AI 工具安装状态

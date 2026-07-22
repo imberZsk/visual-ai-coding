@@ -13,6 +13,7 @@ import {
   SunOutlined,
   ThunderboltOutlined,
   ToolOutlined,
+  WalletOutlined,
 } from '@ant-design/icons'
 import { useState, type ReactNode } from 'react'
 import { Button as AntButton, Drawer, Menu, type MenuProps } from 'antd'
@@ -84,6 +85,11 @@ function createMenuItems(): MenuProps['items'] {
       key: 'unified',
       icon: <DeploymentUnitOutlined aria-hidden="true" />,
       label: 'Unified',
+    },
+    {
+      key: 'quota',
+      icon: <WalletOutlined aria-hidden="true" />,
+      label: '额度管理',
     },
     { type: 'divider' },
     ...toolItems,
