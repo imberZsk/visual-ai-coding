@@ -131,6 +131,7 @@
       "title": "Visual Ai Coding ${version}"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
