@@ -41,6 +41,9 @@
     "dist": "pnpm run build:ui && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --mac --arm64 --publish never",
     "dist:win": "pnpm run build:ui && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --win --x64 --publish never",
     "test": "vitest run",
+    "test:e2e": "pnpm run build:ui && playwright test",
+    "test:e2e:headed": "pnpm run build:ui && playwright test --headed",
+    "test:e2e:ui": "pnpm run build:ui && playwright test --ui",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "lint": "eslint .",
@@ -59,6 +62,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
     "@eslint/js": "^10.0.1",

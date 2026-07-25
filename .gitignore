@@ -8,6 +8,8 @@ dist-electron/
 dist-ssr/
 release/
 coverage/
+playwright-report/
+test-results/
 .nyc_output/
 *.dmg
 *.exe
