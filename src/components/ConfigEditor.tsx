@@ -63,9 +63,10 @@ export default function ConfigEditor({ spec }: { spec: ConfigFileSpec }) {
     setMessage(null);
     try {
       await saveConfigFile(file.path, draft, file.format);
-      setMessage({ type: "ok", text: "已保存" });
       // 保存成功后刷新文件状态（exists 等）
       await load();
+      // Bug 修复：load 会清空旧消息，因此刷新完成后再展示成功反馈，避免提示瞬间消失。
+      setMessage({ type: "ok", text: "已保存" });
     } catch (e) {
       setMessage({ type: "err", text: String(e) });
     } finally {

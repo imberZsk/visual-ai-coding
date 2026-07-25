@@ -20,6 +20,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const isDev = process.env.NODE_ENV === 'development'
 // isSmoke 标记是否启动 Electron 冒烟自检模式。
 const isSmoke = process.env.VAC_SMOKE === '1'
+// isE2E 标记是否使用隔离的 Playwright 测试桥，避免读取用户真实 AI 配置与凭据。
+const isE2E = process.env.VAC_E2E === '1'
 // mainWindow 持有主窗口引用，避免被垃圾回收。
 let mainWindow = null
 
@@ -62,7 +64,10 @@ function createWindow() {
     title: 'Visual AI Coding',
     backgroundColor: '#141414',
     webPreferences: {
-      preload: join(__dirname, 'preload.cjs'),
+      preload: join(
+        __dirname,
+        isE2E ? '../e2e/mockPreload.cjs' : 'preload.cjs'
+      ),
       contextIsolation: true,
       nodeIntegration: false,
     },
