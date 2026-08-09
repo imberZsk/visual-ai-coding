@@ -1,23 +1,48 @@
 import { expect, type Page } from '@playwright/test'
 import { electronTest } from './helpers/electronApp'
 
-// openToolPage 从侧栏进入指定工具的能力页；tool 和 capability 分别是一级分组与二级入口名称。
+// openToolPage 通过侧栏 Select 切换工具，再进入该工具的一层能力入口。
 async function openToolPage(
   page: Page,
   tool: 'Codex' | 'Claude Code',
   capability: string
 ) {
-  // group 存储目标工具的一级菜单节点。
-  const group = page.getByRole('menuitem', { name: tool, exact: true })
-  if ((await group.getAttribute('aria-expanded')) !== 'true') {
-    await group.click()
+  // toolSelect 存储当前 AI 工具 Select 的可见容器；Ant Design 的内部 input 不承载显示文本。
+  const toolSelect = page.locator('.app-sidebar__tool-select .ant-select')
+  if ((await toolSelect.textContent())?.trim() !== tool) {
+    await toolSelect.click()
+    await page
+      .locator('.ant-select-item-option')
+      .filter({ hasText: tool })
+      .click()
   }
-  // openMenu 存储当前唯一展开的子菜单，避免过渡期间隐藏菜单产生同名元素歧义。
-  const openMenu = page.locator('.ant-menu-submenu-open')
-  await openMenu
-    .getByRole('menuitem', { name: capability, exact: true })
-    .click()
+  await page.getByRole('menuitem', { name: capability, exact: true }).click()
 }
+
+electronTest('侧栏一次只展示当前 AI 工具的一层配置入口', async (page) => {
+  await expect(page.locator('.sidebar-menu .ant-menu-submenu')).toHaveCount(0)
+  await expect(page.getByRole('menuitem', { name: 'Settings' })).toHaveCount(1)
+  await expect(
+    page.locator('.app-sidebar__tool-select .ant-select')
+  ).toContainText('Codex')
+})
+
+electronTest('设置中的默认 AI 工具选择会持久化到侧栏', async (page) => {
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  // settingsToolSelect 存储设置抽屉内的默认工具选择器。
+  const settingsToolSelect = page.locator(
+    '.settings-drawer .settings-control-full'
+  )
+  await settingsToolSelect.click()
+  await page
+    .locator('.ant-select-item-option')
+    .filter({ hasText: 'Claude Code' })
+    .click()
+  await page.locator('.settings-drawer .ant-drawer-close').click()
+  await expect(
+    page.locator('.app-sidebar__tool-select .ant-select')
+  ).toContainText('Claude Code')
+})
 
 electronTest('首屏展示应用品牌与概览标题', async (page) => {
   await expect(
@@ -133,6 +158,15 @@ electronTest('Codex Plugins 页面可进入并展示空状态', async (page) => 
   await expect(page.getByText('未发现已安装插件')).toBeVisible()
 })
 
+electronTest('Codex Marketplace 与 Plugins 分为独立入口', async (page) => {
+  await openToolPage(page, 'Codex', 'Marketplace')
+  await expect(
+    page.getByRole('heading', { name: 'Codex · Marketplace' })
+  ).toBeVisible()
+  await expect(page.getByText('openai-bundled', { exact: true })).toBeVisible()
+  await expect(page.getByText('未发现已安装插件')).toHaveCount(0)
+})
+
 electronTest('Codex Skills 页面展示测试 Skill', async (page) => {
   await openToolPage(page, 'Codex', 'Skills')
   await expect(
@@ -179,6 +213,17 @@ electronTest('Claude Plugins 页面可加载测试插件', async (page) => {
   ).toBeVisible()
 })
 
+electronTest('Claude Marketplace 与 Plugins 分为独立入口', async (page) => {
+  await openToolPage(page, 'Claude Code', 'Marketplace')
+  await expect(
+    page.getByRole('heading', { name: 'Claude Code · Marketplace' })
+  ).toBeVisible()
+  await expect(page.getByText('official', { exact: true })).toBeVisible()
+  await expect(
+    page.getByText('review-tools@official', { exact: true })
+  ).toHaveCount(0)
+})
+
 electronTest('Claude Skills 页面展示测试 Skill', async (page) => {
   await openToolPage(page, 'Claude Code', 'Skills')
   await expect(
@@ -188,14 +233,14 @@ electronTest('Claude Skills 页面展示测试 Skill', async (page) => {
 })
 
 electronTest('统一配置页展示已保存 MCP 与 Skill', async (page) => {
-  await page.getByRole('menuitem', { name: 'Unified' }).click()
+  await page.getByRole('menuitem', { name: '统一配置' }).click()
   await expect(page.getByRole('heading', { name: '统一配置' })).toBeVisible()
   await expect(page.locator('input[value="context7"]')).toBeVisible()
   await expect(page.getByText('review-code', { exact: true })).toBeVisible()
 })
 
 electronTest('统一配置可新增并删除 Server', async (page) => {
-  await page.getByRole('menuitem', { name: 'Unified' }).click()
+  await page.getByRole('menuitem', { name: '统一配置' }).click()
   await page.getByRole('button', { name: '新增 Server' }).click()
   await expect(page.getByText('Server #2')).toBeVisible()
   await page.getByRole('button', { name: '删除' }).last().click()
@@ -203,7 +248,7 @@ electronTest('统一配置可新增并删除 Server', async (page) => {
 })
 
 electronTest('统一配置修改后可保存并同步', async (page) => {
-  await page.getByRole('menuitem', { name: 'Unified' }).click()
+  await page.getByRole('menuitem', { name: '统一配置' }).click()
   await page.locator('input[value="context7"]').fill('context8')
   await page.getByRole('button', { name: '保存并同步' }).click()
   await expect(page.getByText(/同步完成：/)).toBeVisible()
@@ -231,6 +276,6 @@ electronTest('额度管理可打开新增账户对话框', async (page) => {
 
 electronTest('窄窗口下侧栏收窄且内容区仍可见', async (page) => {
   await page.setViewportSize({ width: 720, height: 700 })
-  await expect(page.getByTestId('app-sidebar')).toHaveCSS('width', '72px')
+  await expect(page.getByTestId('app-sidebar')).toHaveCSS('width', '56px')
   await expect(page.getByRole('heading', { name: '概览' })).toBeVisible()
 })

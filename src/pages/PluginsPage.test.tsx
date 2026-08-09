@@ -103,8 +103,8 @@ describe('PluginsPage', () => {
         invokeMock('check_codex_plugin_updates', { codexHome }),
       updateClaudePlugin: (payload: { pluginName: string; scope: string }) =>
         invokeMock('update_claude_plugin', payload),
-      updateCodexMarketplace: (marketplaceName: string) =>
-        invokeMock('update_codex_marketplace', { marketplaceName }),
+      updateCodexMarketplace: (marketplaceName: string, toolHome: string) =>
+        invokeMock('update_codex_marketplace', { marketplaceName, toolHome }),
       updateCodexPlugin: (payload: { pluginId: string; marketplace: string }) =>
         invokeMock('update_codex_plugin', payload),
       setPluginEnabled: (payload: {
@@ -1083,6 +1083,7 @@ describe('PluginsPage', () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('update_codex_marketplace', {
         marketplaceName: 'openai-bundled',
+        toolHome: '/Users/test/.codex',
       })
       expect(invokeMock).toHaveBeenCalledWith('update_codex_plugin', {
         pluginId: 'browser@openai-bundled',

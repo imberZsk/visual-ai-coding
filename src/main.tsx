@@ -59,47 +59,14 @@ function RootProviders() {
   const algorithm = isDark
     ? antdTheme.darkAlgorithm
     : antdTheme.defaultAlgorithm
-  // themeTokens 存储与项目 CSS 变量对齐的 Ant Design 石墨主题 token。
+  // themeTokens 存储与项目 CSS 变量对齐的 Ant Design 语义主题 token。
   const themeTokens = {
-    colorPrimary: isDark ? '#d4d4d0' : '#52524e',
-    colorInfo: isDark ? '#a8a8a0' : '#5b5b57',
-    colorSuccess: isDark ? '#22c55e' : '#16a34a',
-    colorWarning: isDark ? '#eab308' : '#ca8a04',
-    colorError: isDark ? '#ef4444' : '#dc2626',
-    colorBgLayout: isDark ? '#121211' : '#f6f6f4',
-    colorBgContainer: isDark ? '#1c1c1b' : '#fcfcfa',
-    colorBgElevated: isDark ? '#262624' : '#fcfcfa',
-    colorBorder: isDark ? '#3a3a37' : '#d9d9d6',
-    colorSplit: isDark ? '#3a3a37' : '#d9d9d6',
-    colorText: isDark ? '#efefeb' : '#181817',
-    colorTextSecondary: isDark ? '#a8a8a0' : '#5b5b57',
-    borderRadius: 7,
-    controlHeight: 34,
+    colorPrimary: '#1677ff',
+    borderRadius: 6,
+    controlHeight: 32,
     fontFamily:
       '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
   }
-  // buttonThemeTokens 存储 Ant Design Button 的显式状态色，避免暗色 hover 回退成不可读的默认蓝白组合。
-  const buttonThemeTokens = {
-    defaultBg: isDark ? '#1c1c1b' : '#fcfcfa',
-    defaultColor: isDark ? '#efefeb' : '#181817',
-    defaultBorderColor: isDark ? '#3a3a37' : '#d9d9d6',
-    defaultHoverBg: isDark ? '#262624' : '#eeeceb',
-    defaultHoverColor: isDark ? '#efefeb' : '#181817',
-    defaultHoverBorderColor: isDark ? '#70706a' : '#80807c',
-    defaultActiveBg: isDark ? '#262624' : '#eeeceb',
-    defaultActiveColor: isDark ? '#efefeb' : '#181817',
-    defaultActiveBorderColor: isDark ? '#70706a' : '#80807c',
-    textTextColor: isDark ? '#efefeb' : '#181817',
-    textTextHoverColor: isDark ? '#efefeb' : '#181817',
-    textTextActiveColor: isDark ? '#efefeb' : '#181817',
-    textHoverBg: isDark ? '#262624' : '#eeeceb',
-    primaryColor: isDark ? '#0c0c0c' : '#fafaf9',
-  }
-  // componentThemeTokens 存储 Ant Design 组件级 token，用于把运行时 CSS-in-JS 与项目全局 CSS 保持一致。
-  const componentThemeTokens = {
-    Button: buttonThemeTokens,
-  }
-
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') {
       // 测试或极端运行环境没有 matchMedia 时无需监听系统主题变化。
@@ -124,7 +91,6 @@ function RootProviders() {
       theme={{
         algorithm,
         token: themeTokens,
-        components: componentThemeTokens,
       }}
     >
       <AntApp message={{ top: ANTD_MESSAGE_CENTER_TOP }}>

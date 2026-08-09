@@ -12,6 +12,7 @@ import {
   checkClaudePluginUpdates,
   checkCodexPluginUpdates,
   listClaudeMarketplaces,
+  listCodexMarketplaces,
   listClaudePlugins,
   setClaudePluginEnabled,
   setCodexPluginEnabled,
@@ -95,6 +96,9 @@ export function registerIpcHandlers(ipcMain, deps = {}) {
   ipcMain.handle(IPC.LIST_CLAUDE_MARKETPLACES, (_event, claudeHome) =>
     listClaudeMarketplaces(claudeHome)
   )
+  ipcMain.handle(IPC.LIST_CODEX_MARKETPLACES, (_event, codexHome) =>
+    listCodexMarketplaces(codexHome)
+  )
   ipcMain.handle(IPC.CHECK_CLAUDE_PLUGIN_UPDATES, (_event, claudeHome) =>
     checkClaudePluginUpdates(claudeHome)
   )
@@ -104,14 +108,14 @@ export function registerIpcHandlers(ipcMain, deps = {}) {
   ipcMain.handle(IPC.UPDATE_CLAUDE_PLUGIN, (_event, payload) =>
     updateClaudePlugin(payload.pluginName, payload.scope)
   )
-  ipcMain.handle(IPC.UPDATE_CLAUDE_MARKETPLACE, (_event, marketplaceName) =>
-    updateClaudeMarketplace(marketplaceName)
+  ipcMain.handle(IPC.UPDATE_CLAUDE_MARKETPLACE, (_event, payload) =>
+    updateClaudeMarketplace(payload.marketplaceName, payload.toolHome)
   )
   ipcMain.handle(IPC.UPDATE_CODEX_PLUGIN, (_event, payload) =>
     updateCodexPlugin(payload.pluginId, payload.marketplace)
   )
-  ipcMain.handle(IPC.UPDATE_CODEX_MARKETPLACE, (_event, marketplaceName) =>
-    updateCodexMarketplace(marketplaceName)
+  ipcMain.handle(IPC.UPDATE_CODEX_MARKETPLACE, (_event, payload) =>
+    updateCodexMarketplace(payload.marketplaceName, payload.toolHome)
   )
   ipcMain.handle(IPC.SET_PLUGIN_ENABLED, (_event, payload) => {
     if (payload.tool === 'claude') {

@@ -10,12 +10,16 @@ import HooksPage from './pages/HooksPage'
 import McpPage from './pages/McpPage'
 import AgentsPage from './pages/AgentsPage'
 import PluginsPage from './pages/PluginsPage'
+import MarketplacePage from './pages/MarketplacePage'
 import SkillsPage from './pages/SkillsPage'
 import SettingsPage from './pages/SettingsPage'
 import UnifiedPage from './pages/UnifiedPage'
 import QuotaPage from './pages/QuotaPage'
 import { LoadingIcon } from './components/ui'
 import AppUpdateButton from './components/AppUpdateButton'
+
+// IS_MACOS 标记当前渲染进程是否运行于 macOS，用于给系统交通灯保留安全区域。
+const IS_MACOS = navigator.userAgent.includes('Macintosh')
 
 // 根据当前激活页签渲染对应页面组件
 function renderPage(tab: string) {
@@ -50,6 +54,10 @@ function renderPage(tab: string) {
       return <PluginsPage tool="codex" />
     case 'claude-plugins':
       return <PluginsPage tool="claude" />
+    case 'codex-marketplace':
+      return <MarketplacePage tool="codex" />
+    case 'claude-marketplace':
+      return <MarketplacePage tool="claude" />
     case 'skills':
     case 'codex-skills':
       return <SkillsPage tool="codex" />
@@ -100,13 +108,13 @@ export default function App() {
   return (
     <div
       data-testid="app-shell"
-      className="flex h-full w-full flex-row overflow-hidden bg-surface text-text-main"
+      className={`app-shell flex h-full w-full flex-row overflow-hidden bg-surface text-text-main${IS_MACOS ? ' app-shell--macos' : ''}`}
     >
       {/* 左侧控制台导航栏 */}
       <AppUpdateButton />
       <Sidebar />
       {/* 右侧内容区：可滚动。scrollbar-gutter:stable 预留滚动条宽度，内容高度变化导致滚动条出现/消失时避免内容区横向跳动（CLS） */}
-      <main className="relative min-w-0 flex-1 overflow-y-auto bg-surface [scrollbar-gutter:stable]">
+      <main className="app-main relative min-w-0 flex-1 overflow-y-auto bg-surface [scrollbar-gutter:stable]">
         <div
           key={activeTab}
           data-testid="tab-content"

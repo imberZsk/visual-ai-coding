@@ -4,6 +4,7 @@ const { contextBridge } = require('electron')
 // preferences 存储测试窗口内可持久更新的应用偏好。
 let preferences = {
   theme: 'dark',
+  active_ai_tool: 'codex',
   vscode_path: 'code',
   claude_home: '/tmp/e2e-claude',
   codex_home: '/tmp/e2e-codex',
@@ -98,6 +99,15 @@ const api = {
       source_type: 'git',
       source: 'https://example.test/repo',
       install_location: '/tmp/official',
+      last_updated: '',
+    },
+  ],
+  listCodexMarketplaces: async () => [
+    {
+      name: 'openai-bundled',
+      source_type: 'local',
+      source: '/tmp/e2e-codex/bundled-marketplace',
+      install_location: '/tmp/e2e-codex/openai-bundled',
       last_updated: '',
     },
   ],

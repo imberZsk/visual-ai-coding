@@ -28,6 +28,7 @@ import type {
   UnifiedSkillsResult,
   UnifiedSyncResult,
 } from '../types'
+import './UnifiedPage.css'
 
 // EMPTY_SERVER 生成一条空白 MCP server，用于新增行的初始值。
 function emptyServer(): UnifiedMcpServer {
@@ -135,8 +136,8 @@ function McpEditor({
   onUpdate: (index: number, patch: Partial<UnifiedMcpServer>) => void
 }) {
   return (
-    <section>
-      <div className="mb-3 flex items-center justify-between">
+    <section className="unified-section">
+      <div className="unified-section__header">
         <SectionTitle>MCP Servers</SectionTitle>
         <AntButton icon={<PlusOutlined />} onClick={onAdd} size="small">
           新增 Server
@@ -156,10 +157,10 @@ function McpEditor({
           />
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="unified-server-list">
           {servers.map((server, index) => (
-            <div key={index} className="rounded-lg border border-border p-4">
-              <div className="mb-3 flex items-center justify-between">
+            <div key={index} className="unified-server-item">
+              <div className="unified-server-item__header">
                 <span className="text-sm font-medium text-text-main">
                   Server #{index + 1}
                 </span>
@@ -172,7 +173,11 @@ function McpEditor({
                   type="text"
                 />
               </div>
-              <Form layout="vertical" size="small">
+              <Form
+                className="unified-server-form"
+                layout="vertical"
+                size="small"
+              >
                 <Form.Item label="名称" required>
                   <Input
                     value={server.name}
@@ -243,7 +248,7 @@ function UnifiedSkillsSection({ skills }: { skills: UnifiedSkillsResult }) {
   ]
 
   return (
-    <section>
+    <section className="unified-section">
       <SectionTitle>Skills</SectionTitle>
       <Typography.Paragraph className="text-text-muted">
         把技能目录放进{' '}
@@ -386,7 +391,7 @@ export default function UnifiedPage() {
   }
 
   return (
-    <PageShell className="max-w-5xl">
+    <PageShell className="unified-page">
       <PageHeader
         title="统一配置"
         subtitle="只写一次 MCP 与 Skills，一键同步到 Claude Code 与 Codex。"
@@ -439,7 +444,7 @@ export default function UnifiedPage() {
           <span>加载统一配置…</span>
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="unified-workspace">
           <McpEditor
             servers={servers}
             onAdd={addServer}

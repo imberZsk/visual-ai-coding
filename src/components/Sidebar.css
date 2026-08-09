@@ -1,0 +1,228 @@
+/* 应用侧栏：与主内容使用一条稳定分隔线，不依赖 Menu 行内样式。 */
+.app-sidebar {
+  --app-sidebar-width: 200px;
+  --app-sidebar-collapsed-width: 56px;
+
+  display: flex;
+  width: var(--app-sidebar-width);
+  height: 100%;
+  flex: 0 0 var(--app-sidebar-width);
+  flex-direction: column;
+  padding-block: 12px;
+  border-right: 1px solid rgb(var(--border));
+  background: rgb(var(--sidebar));
+  transition:
+    width 0.16s ease,
+    flex-basis 0.16s ease;
+}
+
+/* 紧凑侧栏：中等宽度窗口只保留图标，给工作区留下稳定可用宽度。 */
+.app-sidebar--collapsed {
+  width: var(--app-sidebar-collapsed-width);
+  flex-basis: var(--app-sidebar-collapsed-width);
+}
+
+/* 品牌区：仅使用文字层级，避免内容侧栏重复展示应用图标。 */
+.app-sidebar__brand {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  min-width: 0;
+  margin-bottom: 12px;
+  padding-inline: 12px;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+/* macOS 交通灯安全区：品牌文字从窗口按钮右侧开始，不发生遮挡。 */
+.app-shell--macos .app-sidebar__brand {
+  padding-inline-start: 80px;
+}
+
+/* 品牌文字：保持单行截断和紧凑字号，不与页面标题争夺层级。 */
+.app-sidebar__brand-copy {
+  min-width: 0;
+}
+
+.app-sidebar__brand-title,
+.app-sidebar__brand-subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-sidebar__brand-title {
+  color: rgb(var(--text-main));
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.app-sidebar__brand-subtitle {
+  color: rgb(var(--text-muted));
+  font-size: 11px;
+  line-height: 16px;
+}
+
+/* 导航滚动区：隐藏装饰性滚动条，但保留滚轮和键盘滚动能力。 */
+.app-sidebar__nav {
+  min-height: 0;
+  flex: 1;
+  padding-inline: 8px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -webkit-app-region: no-drag;
+}
+
+.app-sidebar__nav::-webkit-scrollbar {
+  display: none;
+}
+
+/* AI 工具选择器：切换当前工具后只展示一套能力入口，避免二级折叠重复导航。 */
+.app-sidebar__tool-select {
+  margin-bottom: 12px;
+}
+
+.app-sidebar__tool-select .ant-select {
+  width: 100%;
+}
+
+/* 单层导航：当前工具能力保持一致行高和紧凑信息密度。 */
+.sidebar-menu.ant-menu.ant-menu-inline {
+  width: 100%;
+  border-inline-end: 0;
+  background: transparent;
+  color: rgb(var(--text-muted));
+  font-size: 13px;
+}
+
+/* 导航入口统一使用 4px 纵向节奏；唯一分隔线由侧栏容器负责。 */
+.sidebar-menu.ant-menu-inline,
+.sidebar-menu .ant-menu-sub.ant-menu-inline {
+  display: flex;
+  flex-direction: column;
+  row-gap: 4px;
+}
+
+.sidebar-menu .ant-menu-item,
+.sidebar-menu .ant-menu-submenu-title {
+  width: 100%;
+  height: 34px;
+  line-height: 34px;
+  margin-inline: 0;
+  margin-block: 0;
+  border-radius: 6px;
+}
+
+/* 导航图标：普通操作图标统一为 16px，避免图形比文字更抢眼。 */
+.sidebar-menu .ant-menu-item-icon,
+.sidebar-menu .ant-menu-submenu-title .ant-menu-item-icon,
+.sidebar-menu .anticon {
+  min-width: 16px;
+  font-size: 16px;
+}
+
+/* 折叠菜单由 Ant Design 处理标题和弹出层，这里只把其默认 80px 宽度收敛到侧栏变量。 */
+.sidebar-menu.ant-menu-inline-collapsed {
+  width: 100%;
+}
+
+/* 选中态：使用低饱和强调底色和左侧指示条，保留高可读性。 */
+.sidebar-menu .ant-menu-item-selected {
+  position: relative;
+  color: rgb(var(--accent));
+  background: rgb(var(--accent) / 0.12);
+  font-weight: 600;
+}
+
+.sidebar-menu .ant-menu-item-selected::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: rgb(var(--accent));
+  content: '';
+}
+
+.sidebar-menu .ant-menu-item-selected::after {
+  display: none;
+}
+
+/* 侧栏底部操作：按钮与导航行使用同一密度，保持图标和文字对齐。 */
+.app-sidebar__footer {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 8px;
+  margin: 12px 8px 0;
+  padding-top: 12px;
+  border-top: 1px solid rgb(var(--border));
+  -webkit-app-region: no-drag;
+}
+
+/* 侧栏交互控件显式退出拖动区域，避免后续布局调整后继承品牌区的拖动行为。 */
+.app-sidebar button,
+.app-sidebar input,
+.app-sidebar .ant-select,
+.app-sidebar [role='menuitem'] {
+  -webkit-app-region: no-drag;
+}
+
+.app-sidebar__theme-button,
+.app-sidebar__settings-button {
+  height: 32px;
+  min-height: 32px;
+}
+
+.app-sidebar__theme-button {
+  width: 32px;
+  padding-inline: 0;
+}
+
+.app-sidebar__settings-button {
+  justify-content: flex-start;
+}
+
+.app-sidebar--collapsed .app-sidebar__brand {
+  display: none;
+}
+
+.app-sidebar--collapsed .app-sidebar__tool-select {
+  display: none;
+}
+
+.app-sidebar--collapsed .app-sidebar__brand-copy,
+.app-sidebar--collapsed .app-sidebar__settings-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.app-sidebar--collapsed .app-sidebar__footer {
+  grid-template-columns: 32px;
+  justify-content: center;
+}
+
+.app-sidebar--collapsed .app-sidebar__settings-button {
+  width: 32px;
+  padding-inline: 0;
+  justify-content: center;
+}
+
+/* 设置抽屉：统一头部、内容和底色，并限制内容宽度。 */
+.settings-drawer .ant-drawer-body {
+  padding: 24px;
+}
+
+@media (max-width: 1023px) {
+  .app-sidebar {
+    border-right-color: rgb(var(--border) / 0.72);
+  }
+}

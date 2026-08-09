@@ -477,6 +477,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       // 同一个插件更新正在进行时直接复用，避免重复执行安装命令。
       return existingOperation.promise
     }
+    // codexHome 存储 Codex marketplace 刷新需要使用的用户配置根目录。
+    const codexHome = get().prefs?.codex_home || ''
 
     set((state) => ({
       pluginPage: {
@@ -507,7 +509,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         // Codex 插件更新依赖 marketplace 先刷新，否则本地索引可能仍指向旧版本。
         const marketplaceOutput = await updateCodexMarketplace(
-          plugin.marketplace
+          plugin.marketplace,
+          codexHome
         )
         // pluginOutput 存储 Codex CLI 返回的插件更新输出。
         const pluginOutput = await updateCodexPlugin(

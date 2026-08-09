@@ -652,7 +652,7 @@ export default function VisualConfigEditor({
   return (
     <section
       data-testid="visual-config-module"
-      className="visual-config-module space-y-3"
+      className="visual-config-module page-item-stack"
     >
       <Card className="visual-config-header-panel">
         <div className="visual-config-module-header flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -750,7 +750,7 @@ export default function VisualConfigEditor({
           />
         </section>
       ) : activeView === 'visual' ? (
-        <div className="visual-config-content-stack space-y-3">
+        <div className="visual-config-content-stack page-item-stack">
           <div
             data-testid="visual-config-toolbar"
             className="visual-config-panel visual-config-toolbar flex flex-wrap items-center justify-between gap-2 px-3 py-2"
@@ -820,7 +820,7 @@ export default function VisualConfigEditor({
                     {group.description}
                   </p>
                 </div>
-                <div className="space-y-3">
+                <div className="page-item-stack">
                   {primaryFieldStates.map((fieldState) =>
                     renderField(fieldState)
                   )}
@@ -837,7 +837,7 @@ export default function VisualConfigEditor({
                           : `显示更多配置（${moreFieldStates.length}）`}
                       </AntButton>
                       {showMoreFields && (
-                        <div className="mt-3 space-y-3">
+                        <div className="page-item-stack mt-3">
                           {moreFieldStates.map((fieldState) =>
                             renderField(fieldState)
                           )}
@@ -876,7 +876,7 @@ export default function VisualConfigEditor({
                     description="没有未知字段"
                   />
                 ) : (
-                  <div className="space-y-3">
+                  <div className="page-item-stack">
                     {unknownKeys.map((key) => {
                       // unknownValue 存储当前未知字段在配置对象中的真实值。
                       const unknownValue = getValueAtPath(configDraft, key)

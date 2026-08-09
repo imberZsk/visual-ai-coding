@@ -5,10 +5,99 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
     <style>
+      html,
+      body,
+      #root {
+        margin: 0;
+        background: #f5f5f5;
+      }
       html.dark,
       html.dark body,
       html.dark #root {
-        background: rgb(18 18 17);
+        background: #141414;
+      }
+      /* React 首次提交前展示与 Ant Design Spin 同形态的轻量启动占位。 */
+      #startup-splash {
+        --startup-icon-size: 112px;
+        --startup-spinner-size: 20px;
+        --startup-spinner-item-size: 9px;
+        --startup-spinner-color: #1677ff;
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: inherit;
+        -webkit-app-region: drag;
+      }
+      html.dark #startup-splash {
+        --startup-spinner-color: #1668dc;
+      }
+      #startup-splash .startup-splash__content {
+        position: relative;
+        width: var(--startup-icon-size);
+        height: var(--startup-icon-size);
+      }
+      #startup-splash img {
+        width: var(--startup-icon-size);
+        height: var(--startup-icon-size);
+        object-fit: contain;
+        user-select: none;
+        -webkit-user-drag: none;
+      }
+      #startup-splash .startup-splash__spinner {
+        position: absolute;
+        top: calc(100% + 16px);
+        left: 50%;
+        width: var(--startup-spinner-size);
+        height: var(--startup-spinner-size);
+        color: var(--startup-spinner-color);
+        transform: translateX(-50%) rotate(45deg);
+        animation: startup-spinner-rotate 1.2s linear infinite;
+      }
+      #startup-splash .startup-splash__spinner-item {
+        position: absolute;
+        width: var(--startup-spinner-item-size);
+        height: var(--startup-spinner-item-size);
+        border-radius: 100%;
+        background: currentColor;
+        opacity: 0.3;
+        transform: scale(0.75);
+        animation: startup-spinner-item 1s linear infinite alternate;
+      }
+      #startup-splash .startup-splash__spinner-item:nth-child(1) {
+        top: 0;
+        left: 0;
+      }
+      #startup-splash .startup-splash__spinner-item:nth-child(2) {
+        top: 0;
+        right: 0;
+        animation-delay: 0.4s;
+      }
+      #startup-splash .startup-splash__spinner-item:nth-child(3) {
+        right: 0;
+        bottom: 0;
+        animation-delay: 0.8s;
+      }
+      #startup-splash .startup-splash__spinner-item:nth-child(4) {
+        bottom: 0;
+        left: 0;
+        animation-delay: 1.2s;
+      }
+      @keyframes startup-spinner-rotate {
+        to {
+          transform: translateX(-50%) rotate(405deg);
+        }
+      }
+      @keyframes startup-spinner-item {
+        to {
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #startup-splash .startup-splash__spinner,
+        #startup-splash .startup-splash__spinner-item {
+          animation: none;
+        }
       }
     </style>
     <script>
@@ -16,38 +105,55 @@
       // applyStartupTheme 根据启动缓存和系统偏好同步设置首屏主题类。
       function applyStartupTheme() {
         // storageKey 存储前端缓存主题偏好的 localStorage key。
-        const storageKey = "visual-aicoding.theme";
+        const storageKey = 'visual-aicoding.theme'
         // root 存储 html 元素，首屏主题类必须挂在这里才能驱动 Tailwind 暗色模式。
-        const root = document.documentElement;
+        const root = document.documentElement
         // cachedTheme 存储上次后端偏好同步到前端的主题模式。
-        let cachedTheme = null;
+        let cachedTheme = null
 
         try {
-          cachedTheme = window.localStorage.getItem(storageKey);
+          cachedTheme = window.localStorage.getItem(storageKey)
         } catch {
           // WHY：部分 WebView 隐私/异常状态可能禁用 localStorage；启动主题仍应继续使用暗色兜底。
         }
 
         // mode 存储首屏可用的主题模式；没有缓存时优先暗色，避免已设置深色但后端偏好尚未读到时闪白。
-        const mode = ["light", "dark", "system"].includes(cachedTheme)
+        const mode = ['light', 'dark', 'system'].includes(cachedTheme)
           ? cachedTheme
-          : "dark";
+          : 'dark'
         // prefersDark 存储系统暗色偏好，仅在缓存为 system 时参与计算。
         const prefersDark =
-          window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+          window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false
         // shouldUseDark 存储首屏最终是否使用暗色背景。
-        const shouldUseDark = mode === "dark" || (mode === "system" && prefersDark);
+        const shouldUseDark =
+          mode === 'dark' || (mode === 'system' && prefersDark)
 
-        root.classList.toggle("dark", shouldUseDark);
-        root.style.colorScheme = shouldUseDark ? "dark" : "light";
+        root.classList.toggle('dark', shouldUseDark)
+        root.style.colorScheme = shouldUseDark ? 'dark' : 'light'
       }
 
-      applyStartupTheme();
+      applyStartupTheme()
     </script>
     <title>Visual AICoding</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div
+        id="startup-splash"
+        role="status"
+        aria-label="Visual AI Coding 正在启动"
+      >
+        <div class="startup-splash__content">
+          <img src="./startup-icon.png" alt="" aria-hidden="true" />
+          <span class="startup-splash__spinner" aria-hidden="true">
+            <i class="startup-splash__spinner-item"></i>
+            <i class="startup-splash__spinner-item"></i>
+            <i class="startup-splash__spinner-item"></i>
+            <i class="startup-splash__spinner-item"></i>
+          </span>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

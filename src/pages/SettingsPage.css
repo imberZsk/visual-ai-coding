@@ -1,0 +1,68 @@
+/* 设置内容：所有顶级设置分区使用 16px 标准间距。 */
+.settings-content {
+  display: grid;
+  gap: 16px;
+}
+
+/* 设置分区：保持统一的 16px 内边距，不由单个表单字段自行调整。 */
+.settings-section .ant-card-body {
+  padding: 16px;
+}
+
+.settings-section__description {
+  margin: 0 0 16px;
+  color: rgb(var(--text-muted));
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.settings-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.settings-section__header .settings-section__description {
+  margin-bottom: 0;
+}
+
+/* 路径字段：标签与控件 8px，字段之间 16px，避免文字贴紧输入框。 */
+.settings-field-list {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-field-label {
+  display: block;
+  margin-bottom: 8px;
+  color: rgb(var(--text-muted));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 设置控件整行承载，Select 与路径输入框保持相同可用宽度。 */
+.settings-control-full {
+  width: 100%;
+}
+
+/* 官方来源：条目是卡片内的重复数据项，只使用一层轻量边界。 */
+.settings-source-list {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-source-item {
+  padding: 12px;
+  border: 1px solid rgb(var(--border));
+  border-radius: 6px;
+  background: rgb(var(--panel-soft));
+}
+
+@media (max-width: 560px) {
+  .settings-section__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

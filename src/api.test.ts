@@ -16,6 +16,7 @@ function buildApiMock() {
     createClaudeOutputStyle: vi.fn().mockResolvedValue({ name: 'x' }),
     listClaudePlugins: vi.fn().mockResolvedValue([]),
     listClaudeMarketplaces: vi.fn().mockResolvedValue([]),
+    listCodexMarketplaces: vi.fn().mockResolvedValue([]),
     updateClaudePlugin: vi.fn().mockResolvedValue('ok'),
     updateClaudeMarketplace: vi.fn().mockResolvedValue('ok'),
     checkClaudePluginUpdates: vi.fn().mockResolvedValue({ updates: [] }),
@@ -153,11 +154,13 @@ describe('api 后端命令封装层', () => {
   })
 
   // 验证插件与市场列表查询转发对应根目录。
-  it('listClaudePlugins / listClaudeMarketplaces 转发根目录', async () => {
+  it('插件与 Marketplace 列表转发对应根目录', async () => {
     await api.listClaudePlugins('/home/.claude')
     await api.listClaudeMarketplaces('/home/.claude')
+    await api.listCodexMarketplaces('/home/.codex')
     expect(apiMock.listClaudePlugins).toHaveBeenCalledWith('/home/.claude')
     expect(apiMock.listClaudeMarketplaces).toHaveBeenCalledWith('/home/.claude')
+    expect(apiMock.listCodexMarketplaces).toHaveBeenCalledWith('/home/.codex')
   })
 
   // 验证更新 Claude 插件会组装名称与作用域转发。
@@ -171,16 +174,22 @@ describe('api 后端命令封装层', () => {
 
   // 验证更新市场与插件更新检查按参数转发。
   it('市场更新与更新检查转发参数', async () => {
-    await api.updateClaudeMarketplace('mk')
+    await api.updateClaudeMarketplace('mk', '/home/.claude')
     await api.checkClaudePluginUpdates('/home/.claude')
     await api.checkCodexPluginUpdates('/home/.codex')
-    await api.updateCodexMarketplace('mk')
-    expect(apiMock.updateClaudeMarketplace).toHaveBeenCalledWith('mk')
+    await api.updateCodexMarketplace('mk', '/home/.codex')
+    expect(apiMock.updateClaudeMarketplace).toHaveBeenCalledWith(
+      'mk',
+      '/home/.claude'
+    )
     expect(apiMock.checkClaudePluginUpdates).toHaveBeenCalledWith(
       '/home/.claude'
     )
     expect(apiMock.checkCodexPluginUpdates).toHaveBeenCalledWith('/home/.codex')
-    expect(apiMock.updateCodexMarketplace).toHaveBeenCalledWith('mk')
+    expect(apiMock.updateCodexMarketplace).toHaveBeenCalledWith(
+      'mk',
+      '/home/.codex'
+    )
   })
 
   // 验证更新 Codex 插件会组装 pluginId 与 marketplace 转发。

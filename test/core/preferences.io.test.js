@@ -70,8 +70,20 @@ describe('core preferences 读写', () => {
     const prefs = getPreferences()
     expect(prefs.theme).toBe('light')
     expect(prefs.vscode_path).toBe('cursor')
+    expect(prefs.active_ai_tool).toBe('codex')
     // hidden_visual_config_fields 非法时应归一化为对象。
     expect(prefs.hidden_visual_config_fields).toEqual({})
+  })
+
+  // 验证非法 AI 工具偏好回退到 Codex，避免侧栏无可用菜单。
+  it('normalizePreferences 修正非法的 AI 工具', async () => {
+    const { savePreferences, getPreferences } =
+      await import('../../src/core/preferences.js')
+    savePreferences({ active_ai_tool: 'unknown' })
+    expect(getPreferences().active_ai_tool).toBe('codex')
+
+    savePreferences({ active_ai_tool: 'claude' })
+    expect(getPreferences().active_ai_tool).toBe('claude')
   })
 
   // 验证 hidden_visual_config_fields 为非对象时会被归一化为空对象。

@@ -1,0 +1,65 @@
+/* 概览工具网格：桌面双列、窄屏单列，保持每个工具信息密度一致。 */
+.dashboard-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+/* 工具卡片：固定内容与操作的竖向结构，两卡状态差异不影响底部对齐。 */
+.dashboard-tool-card.ant-card,
+.dashboard-tool-card .ant-card-body {
+  height: 100%;
+}
+
+.dashboard-tool-card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+}
+
+.dashboard-tool-card__body {
+  flex: 1;
+}
+
+.dashboard-tool-card__metadata {
+  min-width: 0;
+}
+
+/* 配置目录：作为工具卡片内的次级分区，不再另起一张卡片。 */
+.dashboard-tool-card__directory {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid rgb(var(--border));
+  border-radius: 6px;
+  background: rgb(var(--panel-soft));
+}
+
+.dashboard-tool-card__directory-label {
+  margin-bottom: 6px;
+  color: rgb(var(--text-muted));
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.dashboard-tool-card__directory-value {
+  overflow: hidden;
+  color: rgb(var(--text-main));
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-tool-card__actions {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgb(var(--border));
+}
+
+@media (max-width: 900px) {
+  .dashboard-tool-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

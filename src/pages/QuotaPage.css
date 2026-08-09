@@ -1,0 +1,11 @@
+/* 额度账户网格：单账户自适应占满宽度，多账户在空间足够时自动分列。 */
+.quota-account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 16px;
+}
+
+/* 额度卡片：多列时保持内容可收缩，防止 URL 或模型名撑宽页面。 */
+.quota-account-grid > .ant-card {
+  min-width: 0;
+}

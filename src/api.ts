@@ -110,6 +110,14 @@ export function listClaudeMarketplaces(
   return getElectronApi().listClaudeMarketplaces(claudeHome)
 }
 
+// 读取 Codex 市场列表。
+// codexHome 参数存储 Codex 配置根目录。
+export function listCodexMarketplaces(
+  codexHome: string
+): Promise<MarketplaceInfo[]> {
+  return getElectronApi().listCodexMarketplaces(codexHome)
+}
+
 // 手动更新指定插件，返回 CLI 输出
 // scope 为插件安装作用域（user / project），保证 project 插件更新到正确位置
 export function updateClaudePlugin(
@@ -121,9 +129,10 @@ export function updateClaudePlugin(
 
 // 手动更新指定市场，返回 CLI 输出
 export function updateClaudeMarketplace(
-  marketplaceName: string
+  marketplaceName: string,
+  claudeHome: string
 ): Promise<string> {
-  return getElectronApi().updateClaudeMarketplace(marketplaceName)
+  return getElectronApi().updateClaudeMarketplace(marketplaceName, claudeHome)
 }
 
 // 检查 Claude 插件更新状态
@@ -145,9 +154,10 @@ export function checkCodexPluginUpdates(
 // 刷新 Codex marketplace，确保随后安装插件时拿到最新索引
 // marketplaceName 为要更新的 marketplace 名称。
 export function updateCodexMarketplace(
-  marketplaceName: string
+  marketplaceName: string,
+  codexHome: string
 ): Promise<string> {
-  return getElectronApi().updateCodexMarketplace(marketplaceName)
+  return getElectronApi().updateCodexMarketplace(marketplaceName, codexHome)
 }
 
 // 更新 Codex 指定插件

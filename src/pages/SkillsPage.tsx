@@ -211,7 +211,6 @@ function SkillTable({
         <Typography.Paragraph
           className="m-0 skill-path-text"
           ellipsis={{ rows: 2, tooltip: path }}
-          style={{ wordBreak: 'break-all' }}
         >
           {path}
         </Typography.Paragraph>

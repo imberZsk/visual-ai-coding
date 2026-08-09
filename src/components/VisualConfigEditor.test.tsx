@@ -402,7 +402,7 @@ describe('VisualConfigEditor', () => {
       '.visual-config-content-stack'
     )
     expect(contentStack).not.toBeNull()
-    expect(contentStack).toHaveClass('space-y-3')
+    expect(contentStack).toHaveClass('page-item-stack')
     expect(
       contentStack!.querySelector('.visual-config-toolbar')
     ).toBeInTheDocument()
