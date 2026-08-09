@@ -1,19 +1,19 @@
 {
-  "name": "visual-aicoding",
+  "name": "visual-ai-coding",
   "private": true,
   "version": "0.18.0",
   "description": "可视化管理 Claude Code 与 Codex 配置、插件和工具的 Electron 桌面应用",
-  "productName": "Visual Ai Coding",
+  "productName": "Visual AI Coding",
   "author": "imber",
   "license": "MIT",
   "packageManager": "pnpm@11.13.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/imberZsk/visual-aicoding.git"
+    "url": "git+https://github.com/imberZsk/visual-ai-coding.git"
   },
   "homepage": "https://imber-visual-docs.netlify.app/visual-ai-coding",
   "bugs": {
-    "url": "https://github.com/imberZsk/visual-aicoding/issues"
+    "url": "https://github.com/imberZsk/visual-ai-coding/issues"
   },
   "keywords": [
     "electron",
@@ -97,12 +97,12 @@
   },
   "build": {
     "appId": "com.imber.visual-aicoding",
-    "productName": "Visual Ai Coding",
+    "productName": "Visual AI Coding",
     "publish": [
       {
         "provider": "github",
         "owner": "imberZsk",
-        "repo": "visual-aicoding"
+        "repo": "visual-ai-coding"
       }
     ],
     "directories": {
@@ -132,7 +132,7 @@
       "identity": null
     },
     "dmg": {
-      "title": "Visual Ai Coding ${version}"
+      "title": "Visual AI Coding ${version}"
     },
     "win": {
       "icon": "build/icon.ico",
