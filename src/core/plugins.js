@@ -850,6 +850,49 @@ export function listClaudeMarketplaces(claudeHome) {
   return result
 }
 
+// parseCodexMarketplaceListOutput 将 Codex CLI 的 marketplace JSON 转换为统一市场信息。
+// stdout 参数存储 `codex plugin marketplace list --json` 的标准输出。
+export function parseCodexMarketplaceListOutput(stdout) {
+  // root 存储 Codex CLI 返回的 JSON 根对象。
+  const root = JSON.parse(String(stdout || '{}'))
+  // marketplaces 存储 CLI 返回的市场数组，格式异常时回退为空数组。
+  const marketplaces = Array.isArray(root?.marketplaces)
+    ? root.marketplaces
+    : []
+  // result 存储转换后的统一市场信息。
+  const result = marketplaces.map((item) => {
+    // marketplaceSource 存储当前市场声明的来源类型和原始地址。
+    const marketplaceSource = item?.marketplaceSource || {}
+    return {
+      name: jsonString(item, 'name'),
+      source_type: jsonString(marketplaceSource, 'sourceType'),
+      source: jsonString(marketplaceSource, 'source'),
+      install_location: jsonString(item, 'root'),
+      last_updated: '',
+    }
+  })
+  result.sort((left, right) =>
+    left.name.toLowerCase().localeCompare(right.name.toLowerCase())
+  )
+  return result
+}
+
+// listCodexMarketplaces 通过 Codex CLI 读取已注册 marketplace 列表。
+// codexHome 参数存储 Codex 配置根目录，commandRunner 参数允许测试替换命令执行器。
+export async function listCodexMarketplaces(
+  codexHome,
+  commandRunner = runPluginCliRaw
+) {
+  // output 存储 Codex CLI 拆分后的 stdout 与 stderr。
+  const output = await commandRunner(
+    'codex',
+    ['plugin', 'marketplace', 'list', '--json'],
+    'CODEX_HOME',
+    codexHome
+  )
+  return parseCodexMarketplaceListOutput(output.stdout)
+}
+
 // updateClaudePlugin 通过 claude CLI 更新指定插件。
 // pluginName 参数存储插件完整名，scope 参数存储安装作用域。
 export async function updateClaudePlugin(pluginName, scope) {
@@ -867,13 +910,16 @@ export async function updateClaudePlugin(pluginName, scope) {
 }
 
 // updateClaudeMarketplace 通过 claude CLI 刷新指定 marketplace。
-// marketplaceName 参数存储 marketplace 名称。
-export async function updateClaudeMarketplace(marketplaceName) {
+// marketplaceName 参数存储 marketplace 名称，claudeHome 参数存储本次命令使用的配置根目录。
+export async function updateClaudeMarketplace(
+  marketplaceName,
+  claudeHome = process.env.CLAUDE_HOME || '~/.claude'
+) {
   return runPluginCli(
     'claude',
     ['plugin', 'marketplace', 'update', marketplaceName],
     'CLAUDE_HOME',
-    process.env.CLAUDE_HOME || '~/.claude'
+    claudeHome
   )
 }
 
@@ -960,10 +1006,11 @@ export function setCodexPluginEnabled(codexHome, pluginId, enabled) {
 }
 
 // updateCodexMarketplace 通过 Codex CLI 刷新 marketplace 快照。
-// marketplaceName 参数存储 marketplace 名称；为空表示升级全部。
-export async function updateCodexMarketplace(marketplaceName) {
-  // defaultHome 存储当前 CODEX_HOME 或默认值。
-  const defaultHome = process.env.CODEX_HOME || '~/.codex'
+// marketplaceName 参数存储 marketplace 名称；为空表示升级全部，codexHome 参数存储本次命令使用的配置根目录。
+export async function updateCodexMarketplace(
+  marketplaceName,
+  codexHome = process.env.CODEX_HOME || '~/.codex'
+) {
   // normalizedName 存储清理后的 marketplace 名称。
   const normalizedName = String(marketplaceName || '').trim()
   // args 存储传给 codex plugin marketplace upgrade 的参数。
@@ -971,7 +1018,7 @@ export async function updateCodexMarketplace(marketplaceName) {
   if (normalizedName) {
     args.push(normalizedName)
   }
-  return runPluginCli('codex', args, 'CODEX_HOME', defaultHome)
+  return runPluginCli('codex', args, 'CODEX_HOME', codexHome)
 }
 
 // PLUGIN_GIT_TIMEOUT_MS 存储插件 Git 查询或切换允许的最长等待时间。

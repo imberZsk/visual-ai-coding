@@ -11,6 +11,7 @@ export const IPC = {
   CREATE_CLAUDE_OUTPUT_STYLE: 'create-claude-output-style',
   LIST_CLAUDE_PLUGINS: 'list-claude-plugins',
   LIST_CLAUDE_MARKETPLACES: 'list-claude-marketplaces',
+  LIST_CODEX_MARKETPLACES: 'list-codex-marketplaces',
   CHECK_CLAUDE_PLUGIN_UPDATES: 'check-claude-plugin-updates',
   CHECK_CODEX_PLUGIN_UPDATES: 'check-codex-plugin-updates',
   UPDATE_CLAUDE_PLUGIN: 'update-claude-plugin',

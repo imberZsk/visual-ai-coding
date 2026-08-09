@@ -10,6 +10,7 @@ let storeState: {
     vscode_path: string
     claude_home: string
     codex_home: string
+    active_ai_tool: 'codex' | 'claude'
     last_active_tab: string
   }
   tools: unknown[]
@@ -50,7 +51,6 @@ vi.mock('./hooks/useTheme', () => ({
 }))
 
 vi.mock('./pages/Dashboard', () => ({
-  DashboardContent: () => <div>概览内嵌内容</div>,
   default: () => <div>概览页面</div>,
 }))
 
@@ -64,6 +64,10 @@ vi.mock('./pages/CodexPage', () => ({
 
 vi.mock('./pages/PluginsPage', () => ({
   default: () => <div>插件页面</div>,
+}))
+
+vi.mock('./pages/MarketplacePage', () => ({
+  default: () => <div>市场页面</div>,
 }))
 
 vi.mock('./pages/SkillsPage', () => ({
@@ -95,6 +99,7 @@ describe('App tab loading', () => {
         vscode_path: 'code',
         claude_home: '/Users/test/.claude',
         codex_home: '/Users/test/.codex',
+        active_ai_tool: 'codex',
         last_active_tab: 'dashboard',
       },
       tools: [],
@@ -112,10 +117,8 @@ describe('App tab loading', () => {
     const rendered = await renderApp()
     rerenderApp = () => rendered.rerender(<App />)
 
-    // codexPluginItem 存储 Codex 一级分组下的插件二级入口。
-    const codexPluginItem = screen.getAllByRole('menuitem', {
-      name: 'Plugins',
-    })[0]
+    // codexPluginItem 存储当前 Codex 工具的一层插件入口。
+    const codexPluginItem = screen.getByRole('menuitem', { name: 'Plugins' })
     fireEvent.click(codexPluginItem)
 
     // 切到“插件”后该导航项应处于 Ant Design Menu 选中态。
@@ -140,18 +143,19 @@ describe('App tab loading', () => {
     ).toBeInTheDocument()
     expect(rendered.container.querySelector('aside')).toBeInTheDocument()
     expect(screen.queryByRole('banner')).not.toBeInTheDocument()
-    expect(screen.getByTestId('app-sidebar')).toHaveClass('w-64')
+    expect(screen.getByTestId('app-sidebar')).toHaveClass('app-sidebar')
+    expect(screen.getByTestId('app-sidebar')).not.toHaveClass('w-56')
     expect(screen.getByTestId('app-sidebar')).not.toHaveClass('border-r')
-    // menu 存储 Ant Design 导航根节点，用于锁定其默认右边框已被移除。
+    // menu 存储 Ant Design 导航根节点，用于确认固定视觉规则没有回流行内样式。
     const menu = rendered.container.querySelector('.sidebar-menu')
     expect(menu).toBeInTheDocument()
-    expect(menu).toHaveStyle({ borderInlineEnd: 0 })
+    expect(menu).not.toHaveAttribute('style')
     expect(screen.getByTestId('app-shell')).toHaveClass('flex-row')
   })
 
-  // 验证 Dashboard 作为左侧导航的第一入口，并在默认页显示选中态。
+  // 验证概览作为左侧导航的第一入口，并在默认页显示选中态。
   it('keeps overview available as the first sidebar entry', async () => {
-    // rendered 存储 App 渲染结果，供 Dashboard 初始状态断言使用。
+    // rendered 存储 App 渲染结果，供概览初始状态断言使用。
     const rendered = await renderApp()
     rerenderApp = () => rendered.rerender(<App />)
 
@@ -159,7 +163,7 @@ describe('App tab loading', () => {
     // overviewButton 存储左侧导航中的概览入口，用于确认当前页语义态。
     const overviewButton = within(
       screen.getByRole('navigation', { name: '主导航' })
-    ).getByRole('menuitem', { name: 'Dashboard' })
+    ).getByRole('menuitem', { name: '概览' })
     expect(overviewButton).toHaveClass('ant-menu-item-selected')
   })
 
@@ -184,7 +188,7 @@ describe('App tab loading', () => {
     // nav 存储主导航区域，避免页面内容或工具区操作影响导航断言。
     const nav = screen.getByRole('navigation', { name: '主导航' })
     expect(
-      within(nav).getByRole('menuitem', { name: 'Dashboard' })
+      within(nav).getByRole('menuitem', { name: '概览' })
     ).toBeInTheDocument()
     expect(
       within(nav).queryByRole('button', { name: '设置' })
@@ -192,29 +196,33 @@ describe('App tab loading', () => {
     expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument()
   })
 
-  // 验证 Codex 与 Claude Code 作为一级入口，并以手风琴方式只展开一个工具分组。
-  it('renders tool groups as an accordion with scoped capability entries', async () => {
+  // 验证侧栏仅展示当前工具的一层能力，并通过 Select 持久化切换工具。
+  it('shows one tool capability set and switches tools with a select', async () => {
     // rendered 存储 App 渲染结果，供 mock store 在页签切换时触发重渲染。
     const rendered = await renderApp()
     rerenderApp = () => rendered.rerender(<App />)
 
-    // nav 存储主导航区域，用于限定按钮查询范围。
+    // nav 存储主导航区域，用于限定能力入口查询范围。
     const nav = screen.getByRole('navigation', { name: '主导航' })
-    // codexGroup 存储默认展开的 Codex 一级菜单。
-    const codexGroup = within(nav).getByRole('menuitem', { name: 'Codex' })
-    // claudeGroup 存储默认收起的 Claude Code 一级菜单。
-    const claudeGroup = within(nav).getByRole('menuitem', {
-      name: 'Claude Code',
-    })
-    expect(codexGroup).toHaveAttribute('aria-expanded', 'true')
-    expect(claudeGroup).toHaveAttribute('aria-expanded', 'false')
+    expect(within(nav).queryByRole('menuitem', { name: 'Codex' })).toBeNull()
+    expect(
+      within(nav).queryByRole('menuitem', { name: 'Claude Code' })
+    ).toBeNull()
+    expect(within(nav).getAllByRole('menuitem', { name: 'MCP' })).toHaveLength(
+      1
+    )
 
     fireEvent.click(within(nav).getByRole('menuitem', { name: 'Hooks' }))
     expect(screen.getByText('Hooks 页面')).toBeInTheDocument()
 
-    fireEvent.click(claudeGroup)
-    expect(codexGroup).toHaveAttribute('aria-expanded', 'false')
-    expect(claudeGroup).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(within(nav).getByRole('menuitem', { name: 'Marketplace' }))
+    expect(screen.getByText('市场页面')).toBeInTheDocument()
+
+    // toolSelect 存储当前 AI 工具选择器，点击 Claude Code 后触发偏好持久化。
+    const toolSelect = screen.getByRole('combobox', { name: '当前 AI 工具' })
+    fireEvent.mouseDown(toolSelect)
+    fireEvent.click(await screen.findByText('Claude Code'))
+    expect(storeState.prefs.active_ai_tool).toBe('claude')
 
     // claudeMcpItem 存储 Claude Code 分组下具有稳定路由 key 的 MCP 入口。
     const claudeMcpItem = nav.querySelector('[data-menu-id$="-claude-mcp"]')
@@ -231,7 +239,7 @@ describe('App tab loading', () => {
     expect(screen.getByText('Agents 页面')).toBeInTheDocument()
   })
 
-  // 验证设置按钮可从左侧栏打开右侧抽屉，并直接展示概览与真实设置表单内容。
+  // 验证设置按钮可从左侧栏打开右侧抽屉，并展示聚焦的设置表单内容。
   it('opens the settings drawer from the sidebar settings button', async () => {
     // rendered 存储 App 渲染结果，供 mock store 触发重渲染。
     const rendered = await renderApp()
@@ -243,7 +251,7 @@ describe('App tab loading', () => {
     const drawer = screen.getByRole('dialog', { name: '设置' })
     expect(drawer).toBeInTheDocument()
     expect(drawer).toHaveClass('ant-drawer-section')
-    expect(within(drawer).getByText('概览内嵌内容')).toBeInTheDocument()
+    expect(within(drawer).queryByText('概览页面')).not.toBeInTheDocument()
     expect(within(drawer).getByText('主题')).toBeInTheDocument()
     expect(
       within(drawer).getByLabelText('VSCode CLI 路径（默认 code）')
@@ -255,8 +263,8 @@ describe('App tab loading', () => {
     ).toBeInTheDocument()
   })
 
-  // 验证抽屉里的概览是内嵌内容，不再切换到 Dashboard 路由。
-  it('keeps overview embedded in the settings drawer without changing routes', async () => {
+  // 验证设置抽屉不嵌入概览页，打开时不改变当前业务路由。
+  it('keeps the settings drawer focused without changing routes', async () => {
     storeState = {
       ...storeState,
       prefs: {
@@ -274,7 +282,8 @@ describe('App tab loading', () => {
     expect(storeState.prefs.last_active_tab).toBe('claude')
     expect(screen.getByText('Claude 页面')).toBeInTheDocument()
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument()
-    expect(screen.getByText('概览内嵌内容')).toBeInTheDocument()
+    expect(screen.queryByText('概览页面')).not.toBeInTheDocument()
+    expect(screen.getByText('主题')).toBeInTheDocument()
   })
 
   // 验证主题快捷按钮只显示图标，依旧能按 light/dark/system 循环更新偏好。

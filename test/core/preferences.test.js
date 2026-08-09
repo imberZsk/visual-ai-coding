@@ -1,12 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { defaultPreferences } from "../../src/core/preferences.js";
+import { describe, expect, it } from 'vitest'
+import { defaultPreferences } from '../../src/core/preferences.js'
 
-describe("core preferences", () => {
+describe('core preferences', () => {
   // 验证新安装或偏好损坏回退时默认进入深色主题，贴合桌面工具的首屏体验。
-  it("defaults to dark theme", () => {
+  it('defaults to dark theme', () => {
     // prefs 存储后端生成的默认偏好对象。
-    const prefs = defaultPreferences();
+    const prefs = defaultPreferences()
 
-    expect(prefs.theme).toBe("dark");
-  });
-});
+    expect(prefs.theme).toBe('dark')
+    expect(prefs.active_ai_tool).toBe('codex')
+  })
+})

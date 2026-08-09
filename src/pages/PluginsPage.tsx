@@ -210,7 +210,7 @@ function PluginToolSection({
         ) : state.result.plugins.length === 0 ? (
           <EmptyState text="未发现已安装插件" />
         ) : (
-          <div className="space-y-3">
+          <div className="page-item-stack">
             {state.result.plugins.map((plugin) => {
               // lastUpdatedText 存储最近更新时间的中国时区中文展示结果。
               const lastUpdatedText = formatPluginLastUpdated(

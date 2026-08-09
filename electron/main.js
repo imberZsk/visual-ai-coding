@@ -13,9 +13,12 @@ import { execFile } from 'node:child_process'
 import { registerIpcHandlers } from './ipcHandlers.js'
 import { warmLoginPath } from '../src/core/util.js'
 import { loadAutoUpdater, registerAppUpdater } from './appUpdater.js'
+import { getWindowChromeOptions } from './windowChrome.js'
 
 // __dirname 存储当前文件目录；ESM 中需从 import.meta.url 推导。
 const __dirname = dirname(fileURLToPath(import.meta.url))
+// DEVELOPMENT_APP_ICON_PATH 存储开发态窗口和 macOS Dock 使用的高清项目图标路径。
+const DEVELOPMENT_APP_ICON_PATH = join(__dirname, '../build/icon.png')
 // isDev 标记当前是否开发环境。
 const isDev = process.env.NODE_ENV === 'development'
 // isSmoke 标记是否启动 Electron 冒烟自检模式。
@@ -60,9 +63,12 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    show: !isSmoke,
+    // 自动化测试必须保留真实渲染进程但隐藏窗口，避免抢占用户桌面焦点。
+    show: !isSmoke && !isE2E,
     title: 'Visual AI Coding',
     backgroundColor: '#141414',
+    icon: app.isPackaged ? undefined : DEVELOPMENT_APP_ICON_PATH,
+    ...getWindowChromeOptions(),
     webPreferences: {
       preload: join(
         __dirname,
@@ -142,6 +148,12 @@ const appUpdater = await loadAutoUpdater(
 registerAppUpdater(ipcMain, appUpdater, app.isPackaged)
 
 app.whenReady().then(async () => {
+  // macOS E2E 隐藏 Dock 图标，避免仅启动后台测试进程也切换前台应用状态。
+  if (isE2E) app.dock?.hide()
+  // Bug 修复：未打包 Electron 默认显示框架图标；开发态显式设置项目图标，打包态继续使用安装包资源。
+  if (process.platform === 'darwin' && !app.isPackaged && !isE2E) {
+    app.dock?.setIcon(DEVELOPMENT_APP_ICON_PATH)
+  }
   // 并行预热 SSH socket 与登录 shell PATH，不 await——两者均在后台静默完成，
   // 窗口立即创建不等待；首次 runCommand 时缓存已大概率就绪，否则再等一次异步解析。
   warmSshAuthSock()

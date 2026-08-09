@@ -59,6 +59,7 @@ declare global {
       }) => Promise<ClaudeOutputStyleInfo>
       listClaudePlugins: (claudeHome: string) => Promise<PluginInfo[]> // 读取 Claude 插件列表。
       listClaudeMarketplaces: (claudeHome: string) => Promise<MarketplaceInfo[]> // 读取 Claude marketplace 列表。
+      listCodexMarketplaces: (codexHome: string) => Promise<MarketplaceInfo[]> // 读取 Codex marketplace 列表。
       checkClaudePluginUpdates: (
         claudeHome: string
       ) => Promise<PluginUpdateCheckResult> // 检查 Claude 插件更新。
@@ -69,12 +70,18 @@ declare global {
         pluginName: string // Claude 插件完整名称。
         scope: string // 安装作用域。
       }) => Promise<string>
-      updateClaudeMarketplace: (marketplaceName: string) => Promise<string> // 更新 Claude marketplace。
+      updateClaudeMarketplace: (
+        marketplaceName: string,
+        toolHome: string
+      ) => Promise<string> // 更新 Claude marketplace。
       updateCodexPlugin: (payload: {
         pluginId: string // Codex 插件 ID。
         marketplace: string // 所属 marketplace。
       }) => Promise<string>
-      updateCodexMarketplace: (marketplaceName: string) => Promise<string> // 更新 Codex marketplace。
+      updateCodexMarketplace: (
+        marketplaceName: string,
+        toolHome: string
+      ) => Promise<string> // 更新 Codex marketplace。
       setPluginEnabled: (payload: {
         tool: 'claude' | 'codex' // 插件所属工具。
         pluginId: string // 插件完整 ID。

@@ -3,6 +3,7 @@
 // 应用偏好，对应 Rust Preferences（注意 serde 默认使用 snake_case 字段名）
 export interface Preferences {
   theme: string // light / dark / system
+  active_ai_tool?: 'codex' | 'claude' // 侧栏当前展示的 AI 工具；可选以兼容旧版偏好文件
   vscode_path: string // VSCode CLI 路径
   claude_home: string // Claude 配置根目录
   codex_home: string // Codex 配置根目录

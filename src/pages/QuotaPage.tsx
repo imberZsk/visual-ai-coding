@@ -28,6 +28,7 @@ import {
   saveQuotaAccount,
 } from '../api'
 import { Card, EmptyState, PageHeader, PageShell } from '../components/ui'
+import './QuotaPage.css'
 import type {
   QuotaAccount,
   QuotaAccountInput,
@@ -275,7 +276,7 @@ export default function QuotaPage() {
       ) : accounts.length === 0 ? (
         <EmptyState text="尚未配置模型额度账户" />
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="quota-account-grid">
           {accounts.map((account) => {
             // result 存储当前账户最近一次额度结果。
             const result = results[account.id]
@@ -337,7 +338,7 @@ export default function QuotaPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 border-t border-border pt-4">
+                <div className="mt-6 border-t border-border pt-4">
                   {result ? (
                     <>
                       <div className="grid grid-cols-3 gap-3 text-sm">

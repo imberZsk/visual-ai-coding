@@ -14,6 +14,7 @@ const IPC = {
   CREATE_CLAUDE_OUTPUT_STYLE: 'create-claude-output-style',
   LIST_CLAUDE_PLUGINS: 'list-claude-plugins',
   LIST_CLAUDE_MARKETPLACES: 'list-claude-marketplaces',
+  LIST_CODEX_MARKETPLACES: 'list-codex-marketplaces',
   CHECK_CLAUDE_PLUGIN_UPDATES: 'check-claude-plugin-updates',
   CHECK_CODEX_PLUGIN_UPDATES: 'check-codex-plugin-updates',
   UPDATE_CLAUDE_PLUGIN: 'update-claude-plugin',
@@ -79,6 +80,9 @@ const api = {
   // listClaudeMarketplaces 读取 Claude marketplace 列表。
   listClaudeMarketplaces: (claudeHome) =>
     ipcRenderer.invoke(IPC.LIST_CLAUDE_MARKETPLACES, claudeHome),
+  // listCodexMarketplaces 读取 Codex marketplace 列表。
+  listCodexMarketplaces: (codexHome) =>
+    ipcRenderer.invoke(IPC.LIST_CODEX_MARKETPLACES, codexHome),
   // checkClaudePluginUpdates 检查 Claude 插件更新。
   checkClaudePluginUpdates: (claudeHome) =>
     ipcRenderer.invoke(IPC.CHECK_CLAUDE_PLUGIN_UPDATES, claudeHome),
@@ -89,14 +93,20 @@ const api = {
   updateClaudePlugin: (payload) =>
     ipcRenderer.invoke(IPC.UPDATE_CLAUDE_PLUGIN, payload),
   // updateClaudeMarketplace 更新 Claude marketplace。
-  updateClaudeMarketplace: (marketplaceName) =>
-    ipcRenderer.invoke(IPC.UPDATE_CLAUDE_MARKETPLACE, marketplaceName),
+  updateClaudeMarketplace: (marketplaceName, toolHome) =>
+    ipcRenderer.invoke(IPC.UPDATE_CLAUDE_MARKETPLACE, {
+      marketplaceName,
+      toolHome,
+    }),
   // updateCodexPlugin 更新 Codex 插件。
   updateCodexPlugin: (payload) =>
     ipcRenderer.invoke(IPC.UPDATE_CODEX_PLUGIN, payload),
   // updateCodexMarketplace 更新 Codex marketplace。
-  updateCodexMarketplace: (marketplaceName) =>
-    ipcRenderer.invoke(IPC.UPDATE_CODEX_MARKETPLACE, marketplaceName),
+  updateCodexMarketplace: (marketplaceName, toolHome) =>
+    ipcRenderer.invoke(IPC.UPDATE_CODEX_MARKETPLACE, {
+      marketplaceName,
+      toolHome,
+    }),
   // setPluginEnabled 启用或禁用单个插件。
   setPluginEnabled: (payload) =>
     ipcRenderer.invoke(IPC.SET_PLUGIN_ENABLED, payload),

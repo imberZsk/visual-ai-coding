@@ -41,6 +41,10 @@ describe('electron ipc handlers', () => {
       expect.any(Function)
     )
     expect(ipcMain.handle).toHaveBeenCalledWith(
+      IPC.LIST_CODEX_MARKETPLACES,
+      expect.any(Function)
+    )
+    expect(ipcMain.handle).toHaveBeenCalledWith(
       IPC.SET_PLUGIN_ENABLED,
       expect.any(Function)
     )

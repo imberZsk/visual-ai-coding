@@ -17,8 +17,10 @@ import {
   compareVersions,
   enrichClaudeAvailableVersions,
   enrichCodexAvailableVersions,
+  listCodexMarketplaces,
   listPluginGitBranches,
   parseClaudePluginUpdateCheckOutput,
+  parseCodexMarketplaceListOutput,
   parseCodexPluginUpdateCheckOutput,
   setCodexPluginEnabled,
   switchPluginGitBranch,
@@ -314,6 +316,54 @@ describe('core plugins', () => {
     expect(result.plugins[0].marketplace).toBe('superpowers-dev')
     expect(result.plugins[0].current_version).toBe('6.0.3')
     expect(result.plugins[0].install_path).toBe('/tmp/superpowers-marketplace')
+  })
+
+  // 验证 Codex marketplace CLI 输出会转换为与 Claude 一致的市场信息结构。
+  it('parses current Codex marketplace field names', () => {
+    // stdout 存储新版 Codex CLI 返回的 marketplace JSON 样例。
+    const stdout = JSON.stringify({
+      marketplaces: [
+        {
+          name: 'superpowers-dev',
+          root: '/tmp/superpowers-dev',
+          marketplaceSource: {
+            sourceType: 'git',
+            source: 'https://github.com/obra/superpowers.git',
+          },
+        },
+      ],
+    })
+
+    // result 存储转换后的统一市场信息。
+    const result = parseCodexMarketplaceListOutput(stdout)
+
+    expect(result).toEqual([
+      {
+        name: 'superpowers-dev',
+        source_type: 'git',
+        source: 'https://github.com/obra/superpowers.git',
+        install_location: '/tmp/superpowers-dev',
+        last_updated: '',
+      },
+    ])
+  })
+
+  // 验证 Codex marketplace 列表会使用所选 Codex home 调用官方 CLI。
+  it('lists Codex marketplaces through the selected Codex home', async () => {
+    // commandRunner 存储 CLI 调用替身，避免测试读取用户真实配置。
+    const commandRunner = vi.fn().mockResolvedValue({
+      stdout: JSON.stringify({ marketplaces: [] }),
+      stderr: '',
+    })
+
+    await listCodexMarketplaces('/tmp/test-codex', commandRunner)
+
+    expect(commandRunner).toHaveBeenCalledWith(
+      'codex',
+      ['plugin', 'marketplace', 'list', '--json'],
+      'CODEX_HOME',
+      '/tmp/test-codex'
+    )
   })
 
   // 验证 Codex CLI 失败时可以从本地 config/cache 构造降级结果。
