@@ -51,6 +51,8 @@ jobs:
     name: Build Windows package
     runs-on: windows-latest
     needs: test
+    # main 已在 PR 阶段完成安装包验证，合并后只保留测试；手动触发仍允许按需打包。
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
@@ -90,6 +92,8 @@ jobs:
     name: Build macOS package
     runs-on: macos-latest
     needs: test
+    # main 已在 PR 阶段完成安装包验证，合并后只保留测试；手动触发仍允许按需打包。
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
