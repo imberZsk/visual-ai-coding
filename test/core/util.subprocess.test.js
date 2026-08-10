@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { delimiter } from 'node:path'
 
 // execFileMock 存储 node:child_process execFile 的测试替身。
 const execFileMock = vi.fn()
@@ -93,7 +94,7 @@ describe('core util 子进程与 PATH 解析', () => {
     )
     const { buildCommandEnv } = await import('../../src/core/util.js')
     // env 存储合并后的子进程环境。
-    const env = await buildCommandEnv({ FOO: 'bar' })
+    const env = await buildCommandEnv({ FOO: 'bar' }, { platform: 'linux' })
     expect(env.PATH).toBe('/merged/bin')
     expect(env.FOO).toBe('bar')
   })
@@ -105,8 +106,88 @@ describe('core util 子进程与 PATH 解析', () => {
     )
     const { buildCommandEnv } = await import('../../src/core/util.js')
     // env 存储降级后的子进程环境。
-    const env = await buildCommandEnv()
+    const env = await buildCommandEnv({}, { platform: 'linux' })
     expect(env.PATH).toBe(process.env.PATH)
+  })
+
+  // 验证 Finder 启动环境找不到 codex 时会补充桌面应用内置 CLI 的目录。
+  it('buildCommandEnv 在 macOS 中补充桌面应用内置 Codex CLI 路径', async () => {
+    execFileMock.mockImplementation((_bin, _args, _opts, cb) =>
+      cb(null, '/usr/bin:/bin\n', '')
+    )
+    const { buildCommandEnv } = await import('../../src/core/util.js')
+    // bundledCodexPath 存储测试模拟的 ChatGPT 应用内置 Codex 可执行文件路径。
+    const bundledCodexPath =
+      '/Applications/ChatGPT.app/Contents/Resources/codex'
+    // fileExists 存储文件探测替身；filePath 参数是当前待检查的候选可执行文件路径。
+    const fileExists = (filePath) => filePath === bundledCodexPath
+    // env 存储补充桌面应用资源目录后的子进程环境。
+    const env = await buildCommandEnv(
+      {},
+      {
+        platform: 'darwin',
+        homeDir: '/Users/tester',
+        fileExists,
+      }
+    )
+
+    expect(env.PATH).toBe(
+      ['/usr/bin', '/bin', '/Applications/ChatGPT.app/Contents/Resources'].join(
+        delimiter
+      )
+    )
+  })
+
+  // 验证用户级 Applications 路径根据当前用户主目录计算，不依赖固定用户名。
+  it('buildCommandEnv 支持不同用户目录中的 Codex 应用', async () => {
+    execFileMock.mockImplementation((_bin, _args, _opts, cb) =>
+      cb(null, '/usr/bin:/bin\n', '')
+    )
+    const { buildCommandEnv } = await import('../../src/core/util.js')
+    // userCodexPath 存储另一位用户目录下模拟的 Codex 可执行文件路径。
+    const userCodexPath =
+      '/Users/another-user/Applications/Codex.app/Contents/Resources/codex'
+    // fileExists 存储文件探测替身；filePath 参数是当前待检查的候选可执行文件路径。
+    const fileExists = (filePath) => filePath === userCodexPath
+    // env 存储使用另一位用户主目录构造出的子进程环境。
+    const env = await buildCommandEnv(
+      {},
+      {
+        platform: 'darwin',
+        homeDir: '/Users/another-user',
+        fileExists,
+      }
+    )
+
+    expect(env.PATH).toBe(
+      [
+        '/usr/bin',
+        '/bin',
+        '/Users/another-user/Applications/Codex.app/Contents/Resources',
+      ].join(delimiter)
+    )
+  })
+
+  // 验证非 macOS 平台不探测或注入 macOS 应用资源目录。
+  it('buildCommandEnv 在非 macOS 平台保持原 PATH', async () => {
+    execFileMock.mockImplementation((_bin, _args, _opts, cb) =>
+      cb(null, '/windows/bin\n', '')
+    )
+    const { buildCommandEnv } = await import('../../src/core/util.js')
+    // fileExists 存储文件探测替身，非 macOS 分支不应调用。
+    const fileExists = vi.fn(() => true)
+    // env 存储 Windows 平台构造出的子进程环境。
+    const env = await buildCommandEnv(
+      {},
+      {
+        platform: 'win32',
+        homeDir: 'C:\\Users\\another-user',
+        fileExists,
+      }
+    )
+
+    expect(env.PATH).toBe('/windows/bin')
+    expect(fileExists).not.toHaveBeenCalled()
   })
 
   // 验证 runCommand 成功时返回 stdout/stderr 文本。
