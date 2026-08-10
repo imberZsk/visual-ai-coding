@@ -7,7 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, delimiter, dirname, join } from 'node:path'
+import { basename, dirname, join, posix, win32 } from 'node:path'
 import { homedir } from 'node:os'
 
 // MACOS_CODEX_APP_RESOURCE_PATHS 存储可能随桌面应用分发 Codex CLI 的系统级资源目录。
@@ -115,24 +115,26 @@ export async function buildCommandEnv(extraEnv = {}, runtime = {}) {
   const homeDir = runtime.homeDir || homedir()
   // fileExists 存储可执行文件存在性检查函数，测试时可注入隔离真实文件系统。
   const fileExists = runtime.fileExists || existsSync
+  // pathDelimiter 存储目标平台的 PATH 分隔符，确保平台注入测试不受宿主系统影响。
+  const pathDelimiter = platform === 'win32' ? win32.delimiter : posix.delimiter
   // commandPath 存储调用方 PATH、登录 shell PATH 或当前进程 PATH 中优先级最高的有效值。
   const commandPath = extraEnv.PATH || loginPath || process.env.PATH || ''
   // commandPathEntries 存储 PATH 中已有目录，用于追加桌面应用资源目录时去重。
-  const commandPathEntries = commandPath.split(delimiter).filter(Boolean)
+  const commandPathEntries = commandPath.split(pathDelimiter).filter(Boolean)
 
   if (platform === 'darwin') {
     // userApplicationsPath 存储当前用户安装 macOS 应用的目录。
-    const userApplicationsPath = join(homeDir, 'Applications')
+    const userApplicationsPath = posix.join(homeDir, 'Applications')
     // codexResourcePaths 存储系统级与用户级桌面应用可能包含 Codex CLI 的资源目录。
     const codexResourcePaths = [
       ...MACOS_CODEX_APP_RESOURCE_PATHS,
-      join(userApplicationsPath, 'ChatGPT.app', 'Contents', 'Resources'),
-      join(userApplicationsPath, 'Codex.app', 'Contents', 'Resources'),
+      posix.join(userApplicationsPath, 'ChatGPT.app', 'Contents', 'Resources'),
+      posix.join(userApplicationsPath, 'Codex.app', 'Contents', 'Resources'),
     ]
     // resourcePath 存储当前正在检查的桌面应用资源目录。
     for (const resourcePath of codexResourcePaths) {
       // bundledCodexPath 存储当前候选桌面应用内置 Codex CLI 的完整路径。
-      const bundledCodexPath = join(resourcePath, CODEX_EXECUTABLE_NAME)
+      const bundledCodexPath = posix.join(resourcePath, CODEX_EXECUTABLE_NAME)
       // Bug 修复：Finder 启动时登录 shell PATH 不包含桌面应用资源目录，导致概览误报未安装且 Marketplace spawn ENOENT；
       // 仅在内置 CLI 真实存在时补入 PATH，避免为普通安装或其他平台注入无效目录。
       if (
@@ -145,7 +147,7 @@ export async function buildCommandEnv(extraEnv = {}, runtime = {}) {
   }
 
   // resolvedCommandPath 存储补充桌面应用内置 CLI 目录后的最终 PATH。
-  const resolvedCommandPath = commandPathEntries.join(delimiter)
+  const resolvedCommandPath = commandPathEntries.join(pathDelimiter)
   return {
     ...process.env,
     ...extraEnv,

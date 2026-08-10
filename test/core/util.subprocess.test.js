@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { delimiter } from 'node:path'
+import { posix } from 'node:path'
 
 // execFileMock 存储 node:child_process execFile 的测试替身。
 const execFileMock = vi.fn()
@@ -133,7 +133,7 @@ describe('core util 子进程与 PATH 解析', () => {
 
     expect(env.PATH).toBe(
       ['/usr/bin', '/bin', '/Applications/ChatGPT.app/Contents/Resources'].join(
-        delimiter
+        posix.delimiter
       )
     )
   })
@@ -164,7 +164,7 @@ describe('core util 子进程与 PATH 解析', () => {
         '/usr/bin',
         '/bin',
         '/Users/another-user/Applications/Codex.app/Contents/Resources',
-      ].join(delimiter)
+      ].join(posix.delimiter)
     )
   })
 
