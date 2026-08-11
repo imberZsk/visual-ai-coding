@@ -6,7 +6,7 @@
   "productName": "Visual AI Coding",
   "author": "imber",
   "license": "MIT",
-  "packageManager": "pnpm@11.13.0",
+  "packageManager": "pnpm@11.21.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/imberZsk/visual-ai-coding.git"
