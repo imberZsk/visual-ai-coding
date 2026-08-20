@@ -116,7 +116,7 @@ export async function buildCommandEnv(extraEnv = {}, runtime = {}) {
   // homeDir 存储当前用户主目录，用于定位用户级 Applications 目录。
   const homeDir = runtime.homeDir || homedir()
   // voltaBinPath 存储当前用户 Volta CLI 目录，测试和多用户环境不依赖固定主目录。
-  const voltaBinPath = join(homeDir, '.volta', 'bin')
+  const voltaBinPath = posix.join(homeDir, '.volta', 'bin')
   // fileExists 存储可执行文件存在性检查函数，测试时可注入隔离真实文件系统。
   const fileExists = runtime.fileExists || existsSync
   // pathDelimiter 存储目标平台的 PATH 分隔符，确保平台注入测试不受宿主系统影响。
