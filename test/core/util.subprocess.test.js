@@ -169,20 +169,29 @@ describe('core util 子进程与 PATH 解析', () => {
   })
 
   // 验证同时存在 nvm 与 Volta 时，Claude CLI 目录被置顶，避免 GUI 与终端命中不同版本。
-  it('buildCommandEnv 优先使用 Volta Claude shim', async () => {
-    execFileMock.mockImplementation((_bin, _args, _opts, cb) =>
-      cb(null, '/Users/tester/.nvm/bin:/usr/bin:/Users/tester/.volta/bin\n', '')
-    )
-    const { buildCommandEnv } = await import('../../src/core/util.js')
-    const voltaClaudePath = '/Users/tester/.volta/bin/claude'
-    const fileExists = (filePath) => filePath === voltaClaudePath
-    const env = await buildCommandEnv(
-      {},
-      { platform: 'darwin', homeDir: '/Users/tester', fileExists }
-    )
+  it.skipIf(process.platform === 'win32')(
+    'buildCommandEnv 优先使用 Volta Claude shim',
+    async () => {
+      execFileMock.mockImplementation((_bin, _args, _opts, cb) =>
+        cb(
+          null,
+          '/Users/tester/.nvm/bin:/usr/bin:/Users/tester/.volta/bin\n',
+          ''
+        )
+      )
+      const { buildCommandEnv } = await import('../../src/core/util.js')
+      const voltaClaudePath = '/Users/tester/.volta/bin/claude'
+      const fileExists = (filePath) => filePath === voltaClaudePath
+      const env = await buildCommandEnv(
+        {},
+        { platform: 'darwin', homeDir: '/Users/tester', fileExists }
+      )
 
-    expect(env.PATH.split(posix.delimiter)[0]).toBe('/Users/tester/.volta/bin')
-  })
+      expect(env.PATH.split(posix.delimiter)[0]).toBe(
+        '/Users/tester/.volta/bin'
+      )
+    }
+  )
 
   // 验证非 macOS 平台不探测或注入 macOS 应用资源目录。
   it('buildCommandEnv 在非 macOS 平台保持原 PATH', async () => {
