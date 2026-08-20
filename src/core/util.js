@@ -17,6 +17,8 @@ const MACOS_CODEX_APP_RESOURCE_PATHS = [
 ]
 // CODEX_EXECUTABLE_NAME 存储用于验证候选资源目录的 Codex CLI 文件名。
 const CODEX_EXECUTABLE_NAME = 'codex'
+// CLAUDE_EXECUTABLE_NAME 存储用于验证 Volta 目录的 Claude CLI 文件名。
+const CLAUDE_EXECUTABLE_NAME = 'claude'
 
 // cachedLoginPath 缓存登录 shell 解析出的 PATH，undefined 表示尚未初始化，null 表示初始化中（进行中的 Promise）。
 let cachedLoginPath = undefined
@@ -113,14 +115,31 @@ export async function buildCommandEnv(extraEnv = {}, runtime = {}) {
   const platform = runtime.platform || process.platform
   // homeDir 存储当前用户主目录，用于定位用户级 Applications 目录。
   const homeDir = runtime.homeDir || homedir()
+  // voltaBinPath 存储当前用户 Volta CLI 目录，测试和多用户环境不依赖固定主目录。
+  const voltaBinPath = join(homeDir, '.volta', 'bin')
   // fileExists 存储可执行文件存在性检查函数，测试时可注入隔离真实文件系统。
   const fileExists = runtime.fileExists || existsSync
   // pathDelimiter 存储目标平台的 PATH 分隔符，确保平台注入测试不受宿主系统影响。
   const pathDelimiter = platform === 'win32' ? win32.delimiter : posix.delimiter
   // commandPath 存储调用方 PATH、登录 shell PATH 或当前进程 PATH 中优先级最高的有效值。
   const commandPath = extraEnv.PATH || loginPath || process.env.PATH || ''
-  // commandPathEntries 存储 PATH 中已有目录，用于追加桌面应用资源目录时去重。
+  // commandPathEntries 存储 PATH 中已有目录，用于调整优先级并追加桌面应用资源目录。
   const commandPathEntries = commandPath.split(pathDelimiter).filter(Boolean)
+
+  // Bug 修复：登录 shell 同时加载 nvm 与 Volta 时可能优先命中 nvm 旧版本，导致更新结果与终端不一致；
+  // 仅在 Volta 的 Claude shim 存在时置顶，未使用 Volta 的机器保持原 PATH 行为。
+  // hasVoltaAiCli 标记 Volta 是否实际管理至少一个目标 AI CLI。
+  const hasVoltaAiCli =
+    platform === 'darwin' &&
+    (fileExists(join(voltaBinPath, CLAUDE_EXECUTABLE_NAME)) ||
+      fileExists(join(voltaBinPath, CODEX_EXECUTABLE_NAME)))
+  if (hasVoltaAiCli) {
+    const voltaIndex = commandPathEntries.indexOf(voltaBinPath)
+    if (voltaIndex >= 0) {
+      commandPathEntries.splice(voltaIndex, 1)
+    }
+    commandPathEntries.unshift(voltaBinPath)
+  }
 
   if (platform === 'darwin') {
     // userApplicationsPath 存储当前用户安装 macOS 应用的目录。
